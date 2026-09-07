@@ -8,7 +8,9 @@ No diretório do projeto, com acesso de escrita ao repositório:
 
 ```bash
 git remote set-url origin https://github.com/1lucas1barroso0/Fate-Gameplay-Toolkit.git
-git push -u origin main
+git fetch origin main
+# O repositório remoto contém apenas o README inicial criado no preparo.
+git push --force-with-lease -u origin main
 ```
 
 ## Vercel
