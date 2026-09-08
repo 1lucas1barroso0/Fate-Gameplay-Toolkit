@@ -26,14 +26,24 @@ import {
 } from "@/lib/room-contracts";
 import { createUuid } from "@/lib/fate";
 import {
+  BLOB_USAGE_LEDGER_TTL_MS,
+  BLOB_USAGE_WINDOW_MS,
+  DELETED_ROOM_RESCAN_LIMIT,
   DELETION_TOMBSTONE_TTL_MS,
   PENDING_PARTICIPANT_TTL_MS,
+  PROJECT_BLOB_MONTHLY_ADVANCED_OPS,
+  PROJECT_BLOB_MONTHLY_SIMPLE_OPS,
+  PROJECT_BLOB_MONTHLY_TRANSFER_BYTES,
   REJECTED_PARTICIPANT_TTL_MS,
   UPLOAD_RESERVATION_TTL_MS,
+  VERCEL_BLOB_HOBBY_ADVANCED_OPS,
+  VERCEL_BLOB_HOBBY_SIMPLE_OPS,
   selectOrphanBlobPathnames,
 } from "@/lib/storage-policy";
 
 const ROOM_CODE_ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ";
+const MAX_ROOM_PARTICIPANTS = 64;
+const GLOBAL_BLOB_STORAGE_LOCK = "fate-gameplay-toolkit:blob-storage";
 
 type RoomSql = ReturnType<typeof getSql>;
 
@@ -184,9 +194,22 @@ async function initializeSchema(sql: RoomSql) {
       code TEXT PRIMARY KEY,
       gm_participant_id TEXT NOT NULL,
       gm_token_hash TEXT NOT NULL,
-      deleted_at BIGINT NOT NULL
+      deleted_at BIGINT NOT NULL,
+      last_scan_at BIGINT NOT NULL DEFAULT 0,
+      scan_count INTEGER NOT NULL DEFAULT 0
     )`,
+    sql`ALTER TABLE deleted_rooms ADD COLUMN IF NOT EXISTS last_scan_at BIGINT NOT NULL DEFAULT 0`,
+    sql`ALTER TABLE deleted_rooms ADD COLUMN IF NOT EXISTS scan_count INTEGER NOT NULL DEFAULT 0`,
     sql`CREATE INDEX IF NOT EXISTS deleted_rooms_deleted_idx ON deleted_rooms(deleted_at)`,
+    sql`CREATE INDEX IF NOT EXISTS deleted_rooms_scan_idx ON deleted_rooms(scan_count, last_scan_at)`,
+    sql`CREATE TABLE IF NOT EXISTS blob_usage_ledger (
+      id TEXT PRIMARY KEY,
+      advanced_ops INTEGER NOT NULL DEFAULT 0,
+      simple_ops INTEGER NOT NULL DEFAULT 0,
+      transfer_bytes BIGINT NOT NULL DEFAULT 0,
+      created_at BIGINT NOT NULL
+    )`,
+    sql`CREATE INDEX IF NOT EXISTS blob_usage_ledger_created_idx ON blob_usage_ledger(created_at)`,
   ]);
 }
 
@@ -224,9 +247,11 @@ async function performBoundedMaintenance(sql: RoomSql) {
     sql`DELETE FROM upload_reservations WHERE created_at < ${now - UPLOAD_RESERVATION_TTL_MS}`,
     sql`DELETE FROM participants WHERE status = 'rejected' AND updated_at < ${now - REJECTED_PARTICIPANT_TTL_MS}`,
     sql`DELETE FROM participants WHERE status = 'pending' AND updated_at < ${now - PENDING_PARTICIPANT_TTL_MS}`,
+    sql`DELETE FROM blob_usage_ledger WHERE created_at < ${now - BLOB_USAGE_LEDGER_TTL_MS}`,
     sql`DELETE FROM deleted_rooms WHERE deleted_at < ${now - DELETION_TOMBSTONE_TTL_MS}`,
   ]);
   await drainBlobCleanupQueue(sql, 2);
+  await rescanDeletedRoomBlobs(sql, 1);
 }
 
 let databaseUsageCache = { bytes: 0, measuredAt: 0 };
@@ -248,6 +273,75 @@ async function assertDatabaseWritable(sql: RoomSql) {
     throw new RoomHttpError("O armazenamento compartilhado está em nível crítico. Exporte ou limpe dados antigos antes de publicar algo novo.", 507);
   }
   return bytes;
+}
+
+type BlobUsage = {
+  advancedOps?: number;
+  simpleOps?: number;
+  transferBytes?: number;
+};
+
+type BlobUsageReservation = {
+  id: string;
+  created: boolean;
+};
+
+function normalizedBlobUsage(usage: BlobUsage) {
+  return {
+    advancedOps: Math.max(0, Math.trunc(usage.advancedOps ?? 0)),
+    simpleOps: Math.max(0, Math.trunc(usage.simpleOps ?? 0)),
+    transferBytes: Math.max(0, Math.trunc(usage.transferBytes ?? 0)),
+  };
+}
+
+function blobUsageEventId(prefix: string) {
+  return `${prefix}:${createUuid()}`;
+}
+
+async function reserveBlobUsage(
+  sql: RoomSql,
+  usageInput: BlobUsage,
+  options: { eventId?: string; maintenance?: boolean } = {},
+): Promise<BlobUsageReservation> {
+  const usage = normalizedBlobUsage(usageInput);
+  const id = options.eventId ?? blobUsageEventId("blob");
+  if (!usage.advancedOps && !usage.simpleOps && !usage.transferBytes) {
+    return { id, created: false };
+  }
+  const now = Date.now();
+  const cutoff = now - BLOB_USAGE_WINDOW_MS;
+  const advancedLimit = options.maintenance
+    ? VERCEL_BLOB_HOBBY_ADVANCED_OPS
+    : PROJECT_BLOB_MONTHLY_ADVANCED_OPS;
+  const simpleLimit = options.maintenance
+    ? VERCEL_BLOB_HOBBY_SIMPLE_OPS
+    : PROJECT_BLOB_MONTHLY_SIMPLE_OPS;
+  const transferLimit = PROJECT_BLOB_MONTHLY_TRANSFER_BYTES;
+  const transaction = await sql.transaction([
+    sql`SELECT pg_advisory_xact_lock(hashtext(${GLOBAL_BLOB_STORAGE_LOCK}))`,
+    sql`
+      INSERT INTO blob_usage_ledger (id, advanced_ops, simple_ops, transfer_bytes, created_at)
+      SELECT ${id}, ${usage.advancedOps}, ${usage.simpleOps}, ${usage.transferBytes}, ${now}
+      WHERE
+        (SELECT COALESCE(SUM(advanced_ops), 0) FROM blob_usage_ledger WHERE created_at >= ${cutoff})
+          + ${usage.advancedOps} <= ${advancedLimit}
+        AND (SELECT COALESCE(SUM(simple_ops), 0) FROM blob_usage_ledger WHERE created_at >= ${cutoff})
+          + ${usage.simpleOps} <= ${simpleLimit}
+        AND (SELECT COALESCE(SUM(transfer_bytes), 0) FROM blob_usage_ledger WHERE created_at >= ${cutoff})
+          + ${usage.transferBytes} <= ${transferLimit}
+      ON CONFLICT (id) DO NOTHING
+      RETURNING id
+    `,
+  ]);
+  if (rows<{ id: string }>(transaction.at(-1)).length) return { id, created: true };
+  const previous = await sql`SELECT id FROM blob_usage_ledger WHERE id = ${id} LIMIT 1`;
+  if (rows<{ id: string }>(previous).length) return { id, created: false };
+  throw new RoomHttpError('O uso gratuito de arquivos está perto do limite seguro. Exporte ou limpe arquivos e tente novamente mais tarde.', 507);
+}
+
+async function releaseBlobUsage(sql: RoomSql, reservation: BlobUsageReservation) {
+  if (!reservation.created) return;
+  await sql`DELETE FROM blob_usage_ledger WHERE id = ${reservation.id}`;
 }
 
 function cleanCode(value: string) {
@@ -350,25 +444,24 @@ export async function joinRoom(input: {
   const room = rows<{ id: string }>(roomResult)[0];
   if (!room) throw new RoomHttpError("Mesa não encontrada. Confira o código.", 404);
 
-  const countResult = await sql`
-    SELECT COUNT(*)::int AS total
-    FROM participants
-    WHERE room_id = ${room.id} AND status != 'rejected'
-  `;
-  if (Number(rows<{ total: number }>(countResult)[0]?.total ?? 0) >= 64) {
-    throw new RoomHttpError("Esta Mesa atingiu o limite de participantes.", 409);
-  }
-
   const now = Date.now();
   const participantId = makeId("member");
   try {
-    const inserted = await sql`
+    const transaction = await sql.transaction([
+      sql`SELECT pg_advisory_xact_lock(hashtext(${room.id}))`,
+      sql`
       INSERT INTO participants
         (id, room_id, name, token_hash, role, status, request_id, created_at, updated_at)
-      VALUES (${participantId}, ${room.id}, ${input.personName}, ${tokenHash}, 'player', 'pending', ${input.requestId}, ${now}, ${now})
+      SELECT ${participantId}, ${room.id}, ${input.personName}, ${tokenHash}, 'player', 'pending', ${input.requestId}, ${now}, ${now}
+      WHERE (
+        SELECT COUNT(*) FROM participants
+        WHERE room_id = ${room.id} AND status != 'rejected'
+      ) < ${MAX_ROOM_PARTICIPANTS}
       ON CONFLICT (request_id) DO NOTHING
       RETURNING id
-    `;
+    `,
+    ]);
+    const inserted = transaction.at(-1);
     if (!rows<{ id: string }>(inserted).length) {
       const replay = await findSessionByRequest(sql, input.requestId, tokenHash);
       if (replay) return { ...replay, token: input.token };

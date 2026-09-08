@@ -42,7 +42,9 @@ export const UPLOAD_RESERVATION_TTL_MS = 60 * 60 * 1000;
 export const DELETION_TOMBSTONE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 export const REJECTED_PARTICIPANT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 export const PENDING_PARTICIPANT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
-export const BLOB_USAGE_LEDGER_TTL_MS = 18 * 31 * 24 * 60 * 60 * 1000;
+export const BLOB_USAGE_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+export const BLOB_USAGE_LEDGER_TTL_MS = 45 * 24 * 60 * 60 * 1000;
+export const DELETED_ROOM_RESCAN_LIMIT = 7;
 
 export type StorageState = "normal" | "attention" | "critical";
 

@@ -106,14 +106,19 @@ export const deletedRooms = pgTable(
     gmParticipantId: text("gm_participant_id").notNull(),
     gmTokenHash: text("gm_token_hash").notNull(),
     deletedAt: bigint("deleted_at", { mode: "number" }).notNull(),
+    lastScanAt: bigint("last_scan_at", { mode: "number" }).notNull().default(0),
+    scanCount: integer("scan_count").notNull().default(0),
   },
-  (table) => [index("deleted_rooms_deleted_idx").on(table.deletedAt)],
+  (table) => [
+    index("deleted_rooms_deleted_idx").on(table.deletedAt),
+    index("deleted_rooms_scan_idx").on(table.scanCount, table.lastScanAt),
+  ],
 );
 
-export const blobMonthlyUsage = pgTable("blob_monthly_usage", {
-  monthKey: text("month_key").primaryKey(),
+export const blobUsageLedger = pgTable("blob_usage_ledger", {
+  id: text("id").primaryKey(),
   advancedOps: integer("advanced_ops").notNull().default(0),
   simpleOps: integer("simple_ops").notNull().default(0),
   transferBytes: bigint("transfer_bytes", { mode: "number" }).notNull().default(0),
-  updatedAt: bigint("updated_at", { mode: "number" }).notNull(),
-});
+  createdAt: bigint("created_at", { mode: "number" }).notNull(),
+}, (table) => [index("blob_usage_ledger_created_idx").on(table.createdAt)]);
