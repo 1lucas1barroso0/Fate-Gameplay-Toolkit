@@ -9,6 +9,7 @@ import {
   Download,
   DoorOpen,
   FileUp,
+  HardDrive,
   LayoutTemplate,
   Palette,
   Plus,
@@ -20,6 +21,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { SheetStructureSettings } from "@/components/sheet-structure-settings";
+import { StorageSettings } from "@/components/storage-settings";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
@@ -46,6 +48,8 @@ import {
 } from "@/lib/table-config";
 import type { TableConfigStore } from "@/lib/use-table-config";
 import type { SavedRoom } from "@/lib/use-room";
+import type { RoomStore } from "@/lib/use-room";
+import type { CharacterStore } from "@/lib/use-character-store";
 
 const ACCENTS = [
   { value: "#01b4ee", name: "Ciano Fate" },
@@ -115,6 +119,9 @@ export function TableSettings({
   onOpenRule,
   onOpenRoom,
   onDeleteProfile,
+  onDeleteProfiles,
+  characterStore,
+  roomStore,
 }: {
   store: TableConfigStore;
   savedRooms: SavedRoom[];
@@ -123,6 +130,9 @@ export function TableSettings({
   onOpenRule: (reference: string) => void;
   onOpenRoom: (participantId: string) => Promise<void>;
   onDeleteProfile: (profileId: string) => void;
+  onDeleteProfiles: (profileIds: string[]) => { removedIds: string[]; replacementId: string };
+  characterStore: CharacterStore;
+  roomStore: RoomStore;
 }) {
   const config = store.config;
   const choiceCount = activeRuleCount(config);
@@ -406,6 +416,11 @@ export function TableSettings({
               <Button onClick={addRule}><Plus /> Colocar no papel</Button>
             </div>
           </AccordionContent>
+        </AccordionItem>
+
+        <AccordionItem value="storage">
+          <AccordionTrigger><span className="settings-trigger"><HardDrive /><b>Armazenamento</b><small>Medir, exportar e liberar espaço com segurança</small></span></AccordionTrigger>
+          <AccordionContent className="settings-content"><StorageSettings characterStore={characterStore} tableStore={store} roomStore={roomStore} onDeleteProfiles={onDeleteProfiles} /></AccordionContent>
         </AccordionItem>
       </Accordion>
 

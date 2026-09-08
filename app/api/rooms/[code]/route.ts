@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { roomCodeSchema, roomDecisionSchema, roomEntrySchema } from "@/lib/room-contracts";
 import {
   addRoomEntry,
+  deleteRoom,
   decideRoomParticipant,
   readRoomSnapshot,
   RoomHttpError,
@@ -18,6 +19,15 @@ function failure(error: unknown) {
   }
   console.error("room-detail-route-failed", error);
   return NextResponse.json({ error: "A Mesa não respondeu. Tente novamente." }, { status: 500 });
+}
+
+export async function DELETE(request: Request, context: RouteContext) {
+  try {
+    const result = await deleteRoom(request, await roomCode(context));
+    return NextResponse.json(result, { headers: { "cache-control": "private, no-store, max-age=0" } });
+  } catch (error) {
+    return failure(error);
+  }
 }
 
 async function roomCode(context: RouteContext) {

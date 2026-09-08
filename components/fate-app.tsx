@@ -3,6 +3,7 @@
 import * as React from "react";
 import { BookOpen, Dices, FileText, Sparkles, UsersRound } from "lucide-react";
 import dynamic from "next/dynamic";
+import { toast } from "sonner";
 import { FateMark } from "@/components/fate-mark";
 import { Toaster } from "@/components/ui/sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -40,7 +41,11 @@ export function FateApp() {
   const changeWorkspace = (value: string) => {
     const next = value as Workspace;
     setWorkspace(next);
-    localStorage.setItem("fate-gameplay-toolkit.workspace", next);
+    try {
+      localStorage.setItem("fate-gameplay-toolkit.workspace", next);
+    } catch {
+      toast.info("A área foi aberta, mas o navegador não conseguiu lembrar esta preferência.");
+    }
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
@@ -74,6 +79,15 @@ export function FateApp() {
     const replacementId = tableStore.deleteProfile(profileId);
     replaceRulesProfileLink(profileId, replacementId);
     replaceRoomRulesProfileLink(profileId, replacementId);
+  };
+
+  const deleteRulesProfiles = (profileIds: string[]) => {
+    const result = tableStore.deleteProfiles(profileIds);
+    for (const profileId of result.removedIds) {
+      replaceRulesProfileLink(profileId, result.replacementId);
+      replaceRoomRulesProfileLink(profileId, result.replacementId);
+    }
+    return result;
   };
 
   React.useEffect(() => {
@@ -128,7 +142,7 @@ export function FateApp() {
           <TabsContent value="regras"><RulesLibrary openReference={ruleTarget} roomReady={roomStore.roomReady} onShareRule={async (title, reference) => { await roomStore.postRule(title, reference); }} tableConfig={tableStore.config} onOpenSettings={() => openRulesSettings(tableStore.activeProfileId)} /></TabsContent>
           <TabsContent value="dados"><DiceRoller character={characterStore.activeCharacter} roomReady={roomStore.roomReady} onRoomRoll={roomStore.roll} tableConfig={tableStore.config} onOpenSettings={() => openRulesSettings(tableStore.activeProfileId)} /></TabsContent>
           <TabsContent value="salas"><Rooms store={roomStore} onOpenRule={openSharedRule} rulesProfiles={tableStore.profiles} activeRulesProfileId={tableStore.activeProfileId} onSelectRulesProfile={tableStore.selectProfile} onOpenRulesProfile={openRules} onOpenSheets={() => changeWorkspace("ficha")} onOpenDice={() => changeWorkspace("dados")} /></TabsContent>
-          <TabsContent value="seu-fate"><TableSettings store={tableStore} savedRooms={roomStore.savedRooms} roomReady={roomStore.roomReady} onShare={roomStore.postNote} onOpenRule={openSharedRule} onOpenRoom={openSavedRoom} onDeleteProfile={deleteRulesProfile} /></TabsContent>
+          <TabsContent value="seu-fate"><TableSettings store={tableStore} savedRooms={roomStore.savedRooms} roomReady={roomStore.roomReady} onShare={roomStore.postNote} onOpenRule={openSharedRule} onOpenRoom={openSavedRoom} onDeleteProfile={deleteRulesProfile} onDeleteProfiles={deleteRulesProfiles} characterStore={characterStore} roomStore={roomStore} /></TabsContent>
         </main>
       </Tabs>
 

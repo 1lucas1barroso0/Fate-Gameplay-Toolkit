@@ -88,6 +88,12 @@ export function DiceRoller({
   }, []);
 
   React.useEffect(() => {
+    const clear = () => setHistory([]);
+    window.addEventListener("fate:roll-history-cleared", clear);
+    return () => window.removeEventListener("fate:roll-history-cleared", clear);
+  }, []);
+
+  React.useEffect(() => {
     if (!hydrated) return;
     try {
       localStorage.setItem(HISTORY_KEY, JSON.stringify(history.slice(0, 100)));

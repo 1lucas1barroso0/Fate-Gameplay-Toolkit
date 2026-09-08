@@ -48,13 +48,36 @@ const sessionSchema = z.object({
   consequences: consequenceSchema,
 });
 
-const sheetImageSchema = z.object({
-  dataUrl: z.string().max(2_800_000).refine((value) => /^data:image\/(webp|png|jpeg);base64,/i.test(value), "Imagem inválida."),
+const sheetImageFramingSchema = z.object({
   positionX: z.number().min(0).max(100),
   positionY: z.number().min(0).max(100),
   zoom: z.number().min(1).max(2.5),
   alt: z.string().max(240),
 });
+
+export const legacySheetImageSchema = sheetImageFramingSchema.extend({
+  dataUrl: z.string().max(2_800_000).refine((value) => /^data:image\/(webp|png|jpeg);base64,/i.test(value), "Imagem inválida."),
+});
+
+export const storedSheetImageSchema = sheetImageFramingSchema.extend({
+  blobId: z.string().min(1).max(100),
+  hash: z.string().regex(/^[a-f0-9]{64}$/).optional(),
+  bytes: z.number().int().nonnegative().max(20_000_000).optional(),
+  contentType: z.string().max(80).optional(),
+});
+
+export const sheetImageSchema = z.union([storedSheetImageSchema, legacySheetImageSchema]);
+export type SheetImage = z.infer<typeof sheetImageSchema>;
+export type LegacySheetImage = z.infer<typeof legacySheetImageSchema>;
+export type StoredSheetImage = z.infer<typeof storedSheetImageSchema>;
+
+export function isStoredSheetImage(image: SheetImage | null | undefined): image is StoredSheetImage {
+  return Boolean(image && "blobId" in image);
+}
+
+export function isLegacySheetImage(image: SheetImage | null | undefined): image is LegacySheetImage {
+  return Boolean(image && "dataUrl" in image);
+}
 
 const sheetLinksSchema = z.object({
   rulesProfileId: z.string().max(100).default(""),

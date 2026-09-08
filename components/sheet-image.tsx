@@ -8,7 +8,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import type { FateCharacter } from "@/lib/fate";
+import { isLegacySheetImage, isStoredSheetImage } from "@/lib/fate";
 import { prepareSheetImage } from "@/lib/sheet-image";
+import { getSheetImageRecord, saveSheetImageBlob } from "@/lib/sheet-image-store";
 import type { TableConfig } from "@/lib/table-config";
 
 type SheetImageValue = FateCharacter["optional"]["image"];
@@ -29,11 +31,50 @@ export function SheetImage({
   const input = React.useRef<HTMLInputElement>(null);
   const [busy, setBusy] = React.useState(false);
   const [draft, setDraft] = React.useState(image);
+  const [loadedImage, setLoadedImage] = React.useState<{ blobId: string; source: string; failed: boolean }>({ blobId: "", source: "", failed: false });
 
   React.useEffect(() => {
     const handle = window.setTimeout(() => setDraft(image), 0);
     return () => window.clearTimeout(handle);
   }, [image]);
+
+  const mediaKey = draft && isStoredSheetImage(draft)
+    ? draft.blobId
+    : draft && isLegacySheetImage(draft)
+      ? draft.dataUrl
+      : "";
+
+  React.useEffect(() => {
+    if (!draft || isLegacySheetImage(draft)) return;
+    let active = true;
+    let objectUrl = "";
+    void getSheetImageRecord(draft.blobId).then((record) => {
+      if (!active) return;
+      if (!record) {
+        setLoadedImage({ blobId: draft.blobId, source: "", failed: true });
+        return;
+      }
+      objectUrl = URL.createObjectURL(record.blob);
+      setLoadedImage({ blobId: draft.blobId, source: objectUrl, failed: false });
+    }).catch(() => {
+      if (active) setLoadedImage({ blobId: draft.blobId, source: "", failed: true });
+    });
+    return () => {
+      active = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+    // Framing changes do not reload the immutable Blob.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mediaKey]);
+
+  const imageSource = draft && isLegacySheetImage(draft)
+    ? draft.dataUrl
+    : draft && isStoredSheetImage(draft) && loadedImage.blobId === draft.blobId
+      ? loadedImage.source
+      : "";
+  const loadFailed = Boolean(
+    draft && isStoredSheetImage(draft) && loadedImage.blobId === draft.blobId && loadedImage.failed,
+  );
 
   const chooseFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -42,8 +83,9 @@ export function SheetImage({
     setBusy(true);
     try {
       const prepared = await prepareSheetImage(file);
-      setDraft(prepared);
-      onChange(prepared);
+      const stored = await saveSheetImageBlob(prepared.blob, prepared.framing);
+      setDraft(stored);
+      onChange(stored);
       toast.success("Imagem da Ficha pronta.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "A imagem não pôde ser preparada.");
@@ -52,7 +94,7 @@ export function SheetImage({
     }
   };
 
-  const shown = draft?.dataUrl === image?.dataUrl ? draft : image;
+  const shown = draft;
 
   const changeFraming = (next: Partial<NonNullable<SheetImageValue>>, commit = false) => {
     if (!shown) return;
@@ -64,11 +106,11 @@ export function SheetImage({
   return (
     <section className="sheet-image-block" data-shape={shape} data-empty={!shown}>
       <div className="sheet-image-frame">
-        {shown ? (
-          // A imagem já foi preparada localmente e pertence ao arquivo exportável da Ficha.
+        {shown && imageSource ? (
+          // O Blob permanece local e a URL temporária é revogada quando deixa de ser usada.
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={shown.dataUrl}
+            src={imageSource}
             alt={shown.alt || (name ? `Imagem de ${name}` : "Imagem da Ficha")}
             style={{
               objectPosition: `${shown.positionX}% ${shown.positionY}%`,
@@ -76,6 +118,12 @@ export function SheetImage({
               transformOrigin: `${shown.positionX}% ${shown.positionY}%`,
             }}
           />
+        ) : loadFailed ? (
+          <div className="sheet-image-placeholder" role="status">
+            <Focus aria-hidden="true" />
+            <b>Imagem indisponível neste dispositivo</b>
+            <span>A Ficha foi preservada. Importe sua cópia para recuperar a imagem.</span>
+          </div>
         ) : editable ? (
           <button className="sheet-image-placeholder" type="button" disabled={busy} onClick={() => input.current?.click()}>
             <Focus aria-hidden="true" />
@@ -90,7 +138,7 @@ export function SheetImage({
           </div>
         )}
 
-        {editable && shown && (
+        {editable && shown && imageSource && (
           <Button className="sheet-image-pick" type="button" variant={shown ? "secondary" : "default"} disabled={busy} onClick={() => input.current?.click()}>
             <RefreshCw /> {busy ? "Preparando…" : "Substituir"}
           </Button>
@@ -98,7 +146,7 @@ export function SheetImage({
         {editable && <input ref={input} className="sr-only" type="file" accept="image/png,image/jpeg,image/webp" onChange={chooseFile} />}
       </div>
 
-      {editable && shown && (
+      {editable && shown && imageSource && (
         <div className="sheet-image-controls">
           <div className="framing-control"><MoveHorizontal aria-hidden="true" /><Label htmlFor="image-horizontal">Mover para os lados</Label><Slider id="image-horizontal" min={0} max={100} step={1} value={[shown.positionX]} onValueChange={([positionX]) => changeFraming({ positionX })} onValueCommit={([positionX]) => changeFraming({ positionX }, true)} /></div>
           <div className="framing-control"><MoveVertical aria-hidden="true" /><Label htmlFor="image-vertical">Mover para cima ou para baixo</Label><Slider id="image-vertical" min={0} max={100} step={1} value={[shown.positionY]} onValueChange={([positionY]) => changeFraming({ positionY })} onValueCommit={([positionY]) => changeFraming({ positionY }, true)} /></div>

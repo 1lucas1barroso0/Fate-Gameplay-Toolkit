@@ -42,6 +42,7 @@ import { adjectiveFor, fateSymbol } from "@/lib/fate";
 import type { RulesProfile } from "@/lib/rules-profiles";
 import { MAX_ROOM_FILES_PER_UPLOAD, type RoomEntry, type RoomFileData, type RoomRollData, type RoomRuleData } from "@/lib/room-contracts";
 import type { RoomStore } from "@/lib/use-room";
+import { formatStorageBytes } from "@/lib/storage-policy";
 
 const DATE_TIME = new Intl.DateTimeFormat("pt-BR", {
   day: "2-digit",
@@ -83,7 +84,7 @@ function FileKindIcon({ file }: { file: RoomFileData }) {
   return <FileIcon aria-hidden="true" />;
 }
 
-function RoomEntryView({ entry, onOpenRule, onDownloadFile }: { entry: RoomEntry; onOpenRule: (reference: string) => void; onDownloadFile: (entry: RoomEntry) => Promise<void> }) {
+function RoomEntryView({ entry, onOpenRule, onDownloadFile, onDeleteFile, canDeleteFile }: { entry: RoomEntry; onOpenRule: (reference: string) => void; onDownloadFile: (entry: RoomEntry) => Promise<void>; onDeleteFile: (entry: RoomEntry) => Promise<{ deleted: boolean; bytesFreed: number; cleanupPending: boolean }>; canDeleteFile: boolean }) {
   const roll = entry.type === "roll" ? entry.data as RoomRollData : null;
   const rule = entry.type === "rule" ? entry.data as RoomRuleData : null;
   const file = entry.type === "file" ? entry.data as RoomFileData : null;
@@ -111,11 +112,14 @@ function RoomEntryView({ entry, onOpenRule, onDownloadFile }: { entry: RoomEntry
             <BookOpen /> {entry.body}
           </Button>
         ) : entry.type === "file" && file?.name ? (
-          <Button className="room-file-link" variant="outline" onClick={() => void onDownloadFile(entry).catch((error) => toast.error(error instanceof Error ? error.message : "O arquivo não pôde ser aberto."))}>
-            <FileKindIcon file={file} />
-            <span><b>{file.name}</b><small>{formatFileSize(file.size)}</small></span>
-            <Download aria-hidden="true" />
-          </Button>
+          <div className="room-file-actions">
+            <Button className="room-file-link" variant="outline" onClick={() => void onDownloadFile(entry).catch((error) => toast.error(error instanceof Error ? error.message : "O arquivo não pôde ser aberto."))}>
+              <FileKindIcon file={file} />
+              <span><b>{file.name}</b><small>{formatFileSize(file.size)}</small></span>
+              <Download aria-hidden="true" />
+            </Button>
+            {canDeleteFile && <AlertDialog><AlertDialogTrigger asChild><Button variant="ghost" size="icon-sm" aria-label={`Excluir ${file.name}`}><Trash2 /></Button></AlertDialogTrigger><AlertDialogContent size="sm"><AlertDialogHeader><AlertDialogTitle>Excluir este arquivo?</AlertDialogTitle><AlertDialogDescription>“{file.name}” será removido desta Mesa e do armazenamento de arquivos. Fichas, regras e os outros itens do Histórico serão preservados.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction variant="destructive" onClick={() => void onDeleteFile(entry).then((result) => toast.success(result.cleanupPending ? "Arquivo retirado da Mesa; a remoção física continuará automaticamente." : "Arquivo excluído por completo.")).catch((error) => toast.error(error instanceof Error ? error.message : "O arquivo não foi excluído."))}>Excluir arquivo</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>}
+          </div>
         ) : (
           <p className="room-note-body">{entry.body}</p>
         )}
@@ -255,6 +259,7 @@ export function Rooms({
   const [uploading, setUploading] = React.useState(false);
   const [filter, setFilter] = React.useState<"all" | RoomEntry["type"]>("all");
   const [query, setQuery] = React.useState("");
+  const [historyDays, setHistoryDays] = React.useState("365");
   const fileInput = React.useRef<HTMLInputElement>(null);
   const savedRoom = store.savedRooms.find((room) => room.session.participantId === store.session?.participantId);
   const linkedProfile = rulesProfiles.find((profile) => profile.id === savedRoom?.rulesProfileId)
@@ -298,6 +303,7 @@ export function Rooms({
   }
 
   const { room, self, participants, entries } = store.snapshot;
+  const roomStorage = store.snapshot.storage;
 
   if (self.status !== "approved") {
     return (
@@ -400,6 +406,14 @@ export function Rooms({
         <input ref={fileInput} className="sr-only" type="file" multiple onChange={uploadFiles} />
       </nav>
 
+      <section className="room-storage-meter" data-state={roomStorage.files.usedBytes >= roomStorage.files.limitBytes ? "critical" : roomStorage.files.usedBytes >= roomStorage.files.warningBytes ? "attention" : "normal"} aria-labelledby="room-storage-heading">
+        <div><p className="eyebrow">Arquivos da Mesa</p><h2 id="room-storage-heading">{formatStorageBytes(roomStorage.files.usedBytes)} usados de {formatStorageBytes(roomStorage.files.limitBytes)} disponíveis nesta Mesa</h2><span>{roomStorage.files.count} de {roomStorage.files.maxCount} arquivos · até {formatStorageBytes(roomStorage.files.maxFileBytes)} por arquivo</span></div>
+        <progress value={roomStorage.files.usedBytes} max={roomStorage.files.limitBytes} aria-label="Uso do armazenamento de arquivos da Mesa" />
+        {store.roomFileApproachingLimit && <p>Espaço em atenção. Exporte ou exclua arquivos antes do próximo envio grande.</p>}
+        {roomStorage.database.usedBytes >= roomStorage.database.warningBytes && <p>O armazenamento compartilhado está se aproximando da margem segura. O narrador pode exportar e limpar partes antigas do Histórico.</p>}
+        {self.role === "gm" && <Button type="button" variant="outline" size="sm" onClick={() => void store.cleanupOrphanFiles().then((result) => toast.success(result.found ? `${result.removed} arquivo(s) órfão(s) removido(s)${result.pending ? "; o restante continuará automaticamente" : ""}.` : "Nenhum arquivo órfão antigo foi encontrado.")).catch((error) => toast.error(error instanceof Error ? error.message : "A verificação não terminou."))}><RefreshCw /> Remover arquivos órfãos</Button>}
+      </section>
+
       {store.session && linkedProfile && (
         <div className="room-rules-choice">
           <BookOpen aria-hidden="true" />
@@ -439,9 +453,12 @@ export function Rooms({
             <div><p className="eyebrow">Diário compartilhado</p><h2 id="room-feed-heading">Histórico da Mesa</h2></div>
             <div className="room-sync-state">
               {store.error && <span data-error="true"><WifiOff /> {store.error}</span>}
+              <Button size="icon-sm" variant="ghost" aria-label="Exportar Histórico completo" onClick={() => void store.exportHistory().then(() => toast.success("Histórico exportado por inteiro.")).catch((error) => toast.error(error instanceof Error ? error.message : "O Histórico não pôde ser exportado."))}><Download /></Button>
               <Button size="icon-sm" variant="ghost" aria-label="Atualizar Mesa" onClick={() => void store.refresh().catch(() => undefined)}><RefreshCw className={store.refreshing ? "animate-spin" : ""} /></Button>
             </div>
           </header>
+
+          {self.role === "gm" && <div className="room-history-management"><span>{formatStorageBytes(roomStorage.history.usedBytes)} em texto e metadados</span><Select value={historyDays} onValueChange={setHistoryDays}><SelectTrigger size="sm" aria-label="Período de Histórico a preservar"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="90">Preservar 90 dias</SelectItem><SelectItem value="180">Preservar 180 dias</SelectItem><SelectItem value="365">Preservar 1 ano</SelectItem><SelectItem value="730">Preservar 2 anos</SelectItem></SelectContent></Select><AlertDialog><AlertDialogTrigger asChild><Button variant="outline" size="sm"><Trash2 /> Limpar parte antiga</Button></AlertDialogTrigger><AlertDialogContent size="sm"><AlertDialogHeader><AlertDialogTitle>Limpar o Histórico anterior a {Number(historyDays) === 365 ? "um ano" : `${historyDays} dias`}?</AlertDialogTitle><AlertDialogDescription>Rolagens, notas e referências de regras anteriores a esse período serão excluídas. Arquivos, participantes e tudo que for mais recente serão preservados. Exporte o Histórico antes se quiser guardar uma cópia.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction variant="destructive" onClick={() => void store.clearOldHistory(Date.now() - Number(historyDays) * 24 * 60 * 60 * 1000).then((result) => toast.success(result.removed ? `${result.removed} item(ns) antigo(s) excluído(s).` : "Não havia itens antigos nesse período.")).catch((error) => toast.error(error instanceof Error ? error.message : "Nada foi apagado."))}>Limpar parte antiga</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog></div>}
 
           <div className="room-feed-tools">
             <div className="room-filter" role="group" aria-label="Filtrar atividade">
@@ -458,7 +475,7 @@ export function Rooms({
 
           {visibleEntries.length ? (
             <ol aria-live="polite">
-              {visibleEntries.map((entry) => <RoomEntryView key={entry.id} entry={entry} onOpenRule={onOpenRule} onDownloadFile={store.downloadFile} />)}
+              {visibleEntries.map((entry) => <RoomEntryView key={entry.id} entry={entry} onOpenRule={onOpenRule} onDownloadFile={store.downloadFile} onDeleteFile={store.deleteFile} canDeleteFile={entry.type === "file" && (self.role === "gm" || entry.actor.id === self.id)} />)}
             </ol>
           ) : (
             <div className="room-feed-empty"><StickyNote aria-hidden="true" /><p>{entries.length ? "Nenhuma atividade corresponde a este filtro." : "A primeira rolagem, nota, regra ou arquivo aparecerá aqui."}</p></div>
@@ -487,6 +504,7 @@ export function Rooms({
                 <AlertDialogFooter><AlertDialogCancel>Ficar</AlertDialogCancel><AlertDialogAction onClick={store.leave}>Sair</AlertDialogAction></AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>
+            {self.role === "gm" && <AlertDialog><AlertDialogTrigger asChild><Button variant="outline" className="destructive-outline"><Trash2 /> Excluir Mesa inteira</Button></AlertDialogTrigger><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Excluir “{room.name}” por completo?</AlertDialogTitle><AlertDialogDescription>Participantes, Histórico, referências e todos os arquivos desta Mesa serão excluídos. Esta ação não afeta Fichas ou conjuntos de regras guardados neste dispositivo e não pode ser desfeita. Exporte o que quiser preservar.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction variant="destructive" onClick={() => void store.deleteCurrentRoom().then((result) => toast.success(result.cleanupPending ? "Mesa excluída; a limpeza física dos arquivos continuará automaticamente." : "Mesa e seus arquivos foram excluídos por completo.")).catch((error) => toast.error(error instanceof Error ? error.message : "A Mesa não foi excluída."))}>Excluir Mesa inteira</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>}
           </section>
         </aside>
       </div>

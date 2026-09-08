@@ -22,8 +22,17 @@ const LEGACY_STORE_KEY = "fate-gameplay-toolkit.table-config.v1";
 const LEGACY_BACKUP_KEY = "fate-gameplay-toolkit.table-config.backup.v1";
 const STORE_KEY = "fate-gameplay-toolkit.rules-profiles.v1";
 const BACKUP_KEY = "fate-gameplay-toolkit.rules-profiles.backup.v1";
+const PENDING_KEY = `${STORE_KEY}.indexeddb-pending`;
 
 function readStoredCollection() {
+  const pending = localStorage.getItem(PENDING_KEY);
+  if (pending) {
+    try {
+      return normalizeRulesProfileCollection(JSON.parse(pending));
+    } catch {
+      localStorage.removeItem(PENDING_KEY);
+    }
+  }
   const raw = localStorage.getItem(STORE_KEY);
   if (raw) return normalizeRulesProfileCollection(JSON.parse(raw));
   const legacy = localStorage.getItem(LEGACY_STORE_KEY);
@@ -83,9 +92,14 @@ export function useTableConfig() {
       if (serialized === lastSerialized.current) return;
       try {
         const previous = localStorage.getItem(STORE_KEY);
+        localStorage.setItem(PENDING_KEY, serialized);
         if (previous && previous !== serialized) localStorage.setItem(BACKUP_KEY, previous);
+        else if (!localStorage.getItem(BACKUP_KEY)) localStorage.setItem(BACKUP_KEY, serialized);
         localStorage.setItem(STORE_KEY, serialized);
-        localStorage.setItem(LEGACY_STORE_KEY, JSON.stringify(config));
+        if (localStorage.getItem(STORE_KEY) !== serialized) throw new Error("A gravação não foi confirmada.");
+        localStorage.removeItem(PENDING_KEY);
+        localStorage.removeItem(LEGACY_STORE_KEY);
+        localStorage.removeItem(LEGACY_BACKUP_KEY);
         lastSerialized.current = serialized;
         setLastSavedAt(Date.now());
       } catch {
@@ -93,7 +107,7 @@ export function useTableConfig() {
       }
     }, 220);
     return () => window.clearTimeout(handle);
-  }, [collection, config, hydrated]);
+  }, [collection, hydrated]);
 
   const update = React.useCallback((updater: (current: TableConfig) => TableConfig) => {
     setCollection((current) => ({
@@ -137,6 +151,20 @@ export function useTableConfig() {
     return replacementId;
   }, [collection]);
 
+  const deleteProfiles = React.useCallback((profileIds: Iterable<string>) => {
+    const selected = new Set(profileIds);
+    let profiles = collection.profiles.filter((profile) => !selected.has(profile.id));
+    if (!profiles.length) profiles = [collection.profiles[0]];
+    const removedIds = collection.profiles
+      .filter((profile) => !profiles.some((remaining) => remaining.id === profile.id))
+      .map((profile) => profile.id);
+    const replacementId = profiles.some((profile) => profile.id === collection.activeProfileId)
+      ? collection.activeProfileId
+      : profiles[0].id;
+    setCollection({ version: 1, activeProfileId: replacementId, profiles });
+    return { removedIds, replacementId };
+  }, [collection]);
+
   const importConfig = React.useCallback((input: unknown) => {
     if (collection.profiles.length >= MAX_RULES_PROFILES) throw new Error("Você já guardou muitos conjuntos de regras neste dispositivo.");
     const profile = createRulesProfile(normalizeTableConfig(input));
@@ -170,6 +198,7 @@ export function useTableConfig() {
     addProfile,
     duplicateProfile,
     deleteProfile,
+    deleteProfiles,
     update,
     importConfig,
     reset,

@@ -1,4 +1,31 @@
 import { z } from "zod";
+import {
+  MAX_ROOM_FILE_BYTES,
+  MAX_ROOM_FILES,
+  MAX_ROOM_FILES_PER_UPLOAD,
+  PROJECT_BLOB_SAFE_BYTES,
+  PROJECT_MAX_BLOB_FILES,
+  PROJECT_DATABASE_CRITICAL_BYTES,
+  PROJECT_DATABASE_WARNING_BYTES,
+  ROOM_FILE_BUDGET_BYTES,
+  ROOM_FILE_WARNING_BYTES,
+  ROOM_HISTORY_BUDGET_BYTES,
+  ROOM_HISTORY_WARNING_BYTES,
+} from "@/lib/storage-policy";
+
+export {
+  MAX_ROOM_FILE_BYTES,
+  MAX_ROOM_FILES,
+  MAX_ROOM_FILES_PER_UPLOAD,
+  PROJECT_BLOB_SAFE_BYTES,
+  PROJECT_MAX_BLOB_FILES,
+  PROJECT_DATABASE_CRITICAL_BYTES,
+  PROJECT_DATABASE_WARNING_BYTES,
+  ROOM_FILE_BUDGET_BYTES,
+  ROOM_FILE_WARNING_BYTES,
+  ROOM_HISTORY_BUDGET_BYTES,
+  ROOM_HISTORY_WARNING_BYTES,
+};
 
 export const roomCodeSchema = z
   .string()
@@ -9,8 +36,6 @@ const personName = z.string().trim().min(1).max(60);
 const requestId = z.string().uuid();
 const clientToken = z.string().regex(/^[A-Za-z0-9_-]{43}$/);
 
-export const MAX_ROOM_FILE_BYTES = 50 * 1024 * 1024;
-export const MAX_ROOM_FILES_PER_UPLOAD = 10;
 export const roomEntryIdSchema = z.string().regex(/^entry_[A-Za-z0-9_-]+$/).max(100);
 
 export const createRoomSchema = z.object({
@@ -117,4 +142,26 @@ export type RoomSnapshot = {
   participants: RoomParticipant[];
   entries: RoomEntry[];
   nextCursor: string | null;
+  storage: RoomStorageStats;
+};
+
+export type RoomStorageStats = {
+  files: {
+    usedBytes: number;
+    limitBytes: number;
+    warningBytes: number;
+    count: number;
+    maxCount: number;
+    maxFileBytes: number;
+  };
+  history: {
+    usedBytes: number;
+    warningBytes: number;
+    guidanceBytes: number;
+  };
+  database: {
+    usedBytes: number;
+    warningBytes: number;
+    criticalBytes: number;
+  };
 };

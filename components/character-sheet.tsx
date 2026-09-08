@@ -29,7 +29,8 @@ type CharacterStore = {
   addCharacter: (name?: string, links?: Partial<SheetLinks>) => FateCharacter;
   duplicateCharacter: () => void;
   deleteActive: () => void;
-  importCharacter: (input: unknown, links?: Partial<SheetLinks>) => FateCharacter;
+  importCharacter: (input: unknown, links?: Partial<SheetLinks>) => Promise<FateCharacter>;
+  exportCharacter: (character: FateCharacter) => Promise<FateCharacter>;
   undo: () => void;
   hydrated: boolean;
 };
@@ -91,7 +92,11 @@ export function CharacterSheet({ store, tableConfig, rulesProfiles, activeRulesP
 
   const changeMode = (next: "edit" | "view") => {
     setMode(next);
-    localStorage.setItem("fate-gameplay-toolkit.sheet-mode", next);
+    try {
+      localStorage.setItem("fate-gameplay-toolkit.sheet-mode", next);
+    } catch {
+      toast.info("O modo foi alterado, mas o navegador não conseguiu lembrar esta preferência.");
+    }
   };
 
   const linkedRoom = savedRooms.find((room) => room.session.participantId === character.optional.links.roomParticipantId);
@@ -135,7 +140,7 @@ export function CharacterSheet({ store, tableConfig, rulesProfiles, activeRulesP
       const importedProfile = parsed && typeof parsed === "object" && parsed.tableConfig
         ? onImportTableConfig(parsed.tableConfig)
         : null;
-      const imported = store.importCharacter(
+      const imported = await store.importCharacter(
         parsed && typeof parsed === "object" && "sheet" in parsed ? parsed.sheet : parsed,
         { rulesProfileId: importedProfile?.id ?? activeRulesProfileId },
       );
@@ -145,7 +150,15 @@ export function CharacterSheet({ store, tableConfig, rulesProfiles, activeRulesP
     }
   };
 
-  const exportSheet = () => safeJsonDownload(`${character.name || "ficha"}.fate.json`, { format: "fate-sheet", bundleVersion: 3, exportedAt: Date.now(), sheet: character, tableConfig });
+  const exportSheet = async () => {
+    try {
+      const exportable = await store.exportCharacter(character);
+      safeJsonDownload(`${character.name || "ficha"}.fate.json`, { format: "fate-sheet", bundleVersion: 4, exportedAt: Date.now(), sheet: exportable, tableConfig });
+      toast.success("Ficha exportada com sua imagem.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "A Ficha não pôde ser exportada.");
+    }
+  };
   const resetScene = () => {
     store.updateActive((current) => clearStress(current, structure.stressTracks.map((track) => track.id)));
     toast.success("Estresse limpo para a próxima cena.");
@@ -167,7 +180,7 @@ export function CharacterSheet({ store, tableConfig, rulesProfiles, activeRulesP
           {mode === "edit" && <div className="sheet-edit-actions">
             <Dialog open={newOpen} onOpenChange={setNewOpen}><DialogTrigger asChild><Button className="sheet-new-action" size="sm"><Plus /> Nova Ficha</Button></DialogTrigger><DialogContent><DialogHeader><DialogTitle>Nova Ficha</DialogTitle><DialogDescription>Ela pode representar uma pessoa, criatura, veículo, lugar, organização ou qualquer outra coisa.</DialogDescription></DialogHeader><Label htmlFor="new-sheet-name">Nome da Ficha</Label><Input id="new-sheet-name" value={newName} maxLength={240} autoFocus onChange={(event) => setNewName(event.target.value)} /><DialogFooter><Button onClick={() => { store.addCharacter(newName.trim() || undefined, { rulesProfileId: activeRulesProfileId }); setNewName(""); setNewOpen(false); }}>Criar Ficha</Button></DialogFooter></DialogContent></Dialog>
             <div className="sheet-utility-actions" role="group" aria-label="Ações desta Ficha">
-              <Button variant="outline" size="icon-sm" onClick={store.undo} aria-label="Desfazer última mudança"><Undo2 /></Button><Button variant="outline" size="icon-sm" onClick={store.duplicateCharacter} aria-label="Duplicar Ficha"><Copy /></Button><Button variant="outline" size="icon-sm" onClick={exportSheet} aria-label="Exportar Ficha"><Download /></Button><Button variant="outline" size="icon-sm" onClick={() => fileInput.current?.click()} aria-label="Importar Ficha"><FileUp /></Button><input ref={fileInput} type="file" accept="application/json,.json" hidden onChange={importFile} />
+              <Button variant="outline" size="icon-sm" onClick={store.undo} aria-label="Desfazer última mudança"><Undo2 /></Button><Button variant="outline" size="icon-sm" onClick={store.duplicateCharacter} aria-label="Duplicar Ficha"><Copy /></Button><Button variant="outline" size="icon-sm" onClick={() => void exportSheet()} aria-label="Exportar Ficha"><Download /></Button><Button variant="outline" size="icon-sm" onClick={() => fileInput.current?.click()} aria-label="Importar Ficha"><FileUp /></Button><input ref={fileInput} type="file" accept="application/json,.json" hidden onChange={importFile} />
               <AlertDialog><AlertDialogTrigger asChild><Button variant="outline" size="icon-sm" aria-label="Excluir Ficha"><Trash2 /></Button></AlertDialogTrigger><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Excluir esta Ficha?</AlertDialogTitle><AlertDialogDescription>Ela sairá deste dispositivo. Exporte antes se quiser guardar uma cópia completa.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction variant="destructive" onClick={store.deleteActive}>Excluir</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
             </div>
           </div>}

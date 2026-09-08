@@ -9,7 +9,12 @@ import type {
   RoomSession,
   RoomSnapshot,
 } from "@/lib/room-contracts";
-import { MAX_ROOM_FILE_BYTES } from "@/lib/room-contracts";
+import {
+  MAX_ROOM_FILE_BYTES,
+  MAX_ROOM_FILES,
+  ROOM_FILE_BUDGET_BYTES,
+  ROOM_FILE_WARNING_BYTES,
+} from "@/lib/room-contracts";
 
 const SESSION_KEY = "fate-gameplay-toolkit.room-session.v1";
 const SESSIONS_KEY = "fate-gameplay-toolkit.room-sessions.v2";
@@ -125,10 +130,18 @@ export function useRoom() {
 
   React.useEffect(() => {
     if (!hydrated) return;
-    localStorage.setItem(SESSIONS_KEY, JSON.stringify({ version: 3, rooms: savedRooms }));
-    if (session?.participantId) sessionStorage.setItem(ACTIVE_SESSION_KEY, session.participantId);
-    else sessionStorage.removeItem(ACTIVE_SESSION_KEY);
-    localStorage.removeItem(SESSION_KEY);
+    let failureTimer = 0;
+    try {
+      const serialized = JSON.stringify({ version: 3, rooms: savedRooms });
+      localStorage.setItem(SESSIONS_KEY, serialized);
+      if (localStorage.getItem(SESSIONS_KEY) !== serialized) throw new Error("A gravação não foi confirmada.");
+      if (session?.participantId) sessionStorage.setItem(ACTIVE_SESSION_KEY, session.participantId);
+      else sessionStorage.removeItem(ACTIVE_SESSION_KEY);
+      localStorage.removeItem(SESSION_KEY);
+    } catch {
+      failureTimer = window.setTimeout(() => setError("O navegador não conseguiu lembrar mudanças nas Mesas. As credenciais anteriores foram preservadas."), 0);
+    }
+    return () => window.clearTimeout(failureTimer);
   }, [hydrated, savedRooms, session?.participantId]);
 
   const rememberRoom = React.useCallback((roomSession: RoomSession, roomSnapshot?: RoomSnapshot | null, markOpened = false, rulesProfileId?: string) => {
@@ -262,7 +275,20 @@ export function useRoom() {
       setHistoryCursor(null);
     } else {
       setSnapshot((current) => current
-        ? { ...current, entries: [...current.entries.filter((item) => item.id !== entry.id), entry].slice(-100) }
+        ? {
+            ...current,
+            entries: [...current.entries.filter((item) => item.id !== entry.id), entry].slice(-100),
+            storage: entry.type === "file" && !current.entries.some((item) => item.id === entry.id)
+              ? {
+                  ...current.storage,
+                  files: {
+                    ...current.storage.files,
+                    usedBytes: current.storage.files.usedBytes + Number((entry.data as RoomFileData).size || 0),
+                    count: current.storage.files.count + 1,
+                  },
+                }
+              : current.storage,
+          }
         : current);
     }
   }, [historyCursor]);
@@ -293,6 +319,13 @@ export function useRoom() {
     if (!session) throw new Error("Entre em uma Mesa primeiro.");
     if (!file.size) throw new Error("Este arquivo está vazio.");
     if (file.size > MAX_ROOM_FILE_BYTES) throw new Error("Escolha um arquivo de até 50 MB.");
+    const currentFiles = snapshot?.storage.files;
+    if (currentFiles && currentFiles.count + 1 > MAX_ROOM_FILES) {
+      throw new Error(`Esta Mesa chegou a ${MAX_ROOM_FILES} arquivos. Exclua um antes de continuar.`);
+    }
+    if (currentFiles && currentFiles.usedBytes + file.size > ROOM_FILE_BUDGET_BYTES) {
+      throw new Error("Este arquivo ultrapassaria o espaço disponível nesta Mesa. Exporte ou exclua arquivos primeiro.");
+    }
 
     const requestId = createUuid();
     const pathname = `rooms/${session.roomCode}/${session.participantId}/${requestId}`;
@@ -310,7 +343,9 @@ export function useRoom() {
         contentType,
         size: file.size,
       }),
-      multipart: file.size > 5 * 1024 * 1024,
+      // Files are capped below Vercel's 100 MB multipart recommendation, so a
+      // single operation is both faster and predictable within Hobby quotas.
+      multipart: false,
     });
 
     for (let attempt = 0; attempt < 60; attempt += 1) {
@@ -328,7 +363,7 @@ export function useRoom() {
     }
 
     throw new Error("O arquivo chegou, mas ainda não apareceu na Mesa. Atualize o histórico em alguns instantes.");
-  }, [rememberEntry, session]);
+  }, [rememberEntry, session, snapshot?.storage.files]);
 
   const downloadFile = React.useCallback(async (entry: RoomEntry) => {
     if (!session || entry.type !== "file") throw new Error("Este arquivo não está disponível.");
@@ -350,6 +385,88 @@ export function useRoom() {
     anchor.click();
     anchor.remove();
     window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
+  }, [session]);
+
+  const deleteFile = React.useCallback(async (entry: RoomEntry) => {
+    if (!session || entry.type !== "file") throw new Error("Este arquivo não está disponível.");
+    const response = await fetch(`/api/rooms/${session.roomCode}/files/${encodeURIComponent(entry.id)}`, {
+      method: "DELETE",
+      headers: sessionHeaders(session),
+    });
+    const result = await decodeResponse<{ deleted: boolean; bytesFreed: number; cleanupPending: boolean }>(response);
+    setSnapshot((current) => current ? {
+      ...current,
+      entries: current.entries.filter((item) => item.id !== entry.id),
+      storage: {
+        ...current.storage,
+        files: {
+          ...current.storage.files,
+          usedBytes: Math.max(0, current.storage.files.usedBytes - result.bytesFreed),
+          count: Math.max(0, current.storage.files.count - (result.deleted ? 1 : 0)),
+        },
+      },
+    } : current);
+    return result;
+  }, [session]);
+
+  const exportHistory = React.useCallback(async () => {
+    if (!session) throw new Error("Entre em uma Mesa primeiro.");
+    const response = await fetch(`/api/rooms/${session.roomCode}/history`, {
+      method: "GET",
+      headers: sessionHeaders(session),
+      cache: "no-store",
+    });
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({})) as ApiError;
+      throw new Error(body.error || "O Histórico não pôde ser exportado.");
+    }
+    const url = URL.createObjectURL(await response.blob());
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `historico-${session.roomCode.toLowerCase()}.jsonl`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
+  }, [session]);
+
+  const clearOldHistory = React.useCallback(async (before: number) => {
+    if (!session) throw new Error("Entre em uma Mesa primeiro.");
+    const response = await fetch(`/api/rooms/${session.roomCode}/history`, {
+      method: "DELETE",
+      headers: { "content-type": "application/json", ...sessionHeaders(session) },
+      body: JSON.stringify({ before }),
+    });
+    const result = await decodeResponse<{ removed: number; bytesFreed: number }>(response);
+    setHistoryCursor(null);
+    const next = await fetchSnapshot(session);
+    setSnapshot(next);
+    return result;
+  }, [session]);
+
+  const cleanupOrphanFiles = React.useCallback(async () => {
+    if (!session) throw new Error("Entre em uma Mesa primeiro.");
+    const response = await fetch(`/api/rooms/${session.roomCode}/storage`, {
+      method: "DELETE",
+      headers: sessionHeaders(session),
+    });
+    return decodeResponse<{ found: number; removed: number; pending: number }>(response);
+  }, [session]);
+
+  const deleteCurrentRoom = React.useCallback(async () => {
+    if (!session) throw new Error("Entre em uma Mesa primeiro.");
+    const deletingParticipantId = session.participantId;
+    const response = await fetch(`/api/rooms/${session.roomCode}`, {
+      method: "DELETE",
+      headers: sessionHeaders(session),
+    });
+    const result = await decodeResponse<{ deleted: boolean; filesQueued: number; cleanupPending: boolean }>(response);
+    setSavedRooms((current) => current.filter((item) => item.session.participantId !== deletingParticipantId));
+    setSession(null);
+    setSnapshot(null);
+    setError("");
+    setHistoryCursor(null);
+    return result;
   }, [session]);
 
   const roll = React.useCallback(async (modifier: number, label: string): Promise<LocalRoll> => {
@@ -455,6 +572,11 @@ export function useRoom() {
     postRule,
     postFile,
     downloadFile,
+    deleteFile,
+    exportHistory,
+    clearOldHistory,
+    cleanupOrphanFiles,
+    deleteCurrentRoom,
     roll,
     decide,
     loadOlder,
@@ -465,6 +587,7 @@ export function useRoom() {
     linkRulesProfile,
     replaceRulesProfileLink,
     leave,
+    roomFileApproachingLimit: Boolean(snapshot && snapshot.storage.files.usedBytes >= ROOM_FILE_WARNING_BYTES),
   };
 }
 

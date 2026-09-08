@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { roomCodeSchema, roomEntryIdSchema } from "@/lib/room-contracts";
-import { readRoomFile, RoomHttpError } from "@/lib/server/rooms";
+import { deleteRoomFile, readRoomFile, RoomHttpError } from "@/lib/server/rooms";
 
 type RouteContext = { params: Promise<{ code: string; entryId: string }> };
 
@@ -33,6 +33,20 @@ export async function GET(request: Request, context: RouteContext) {
     return new Response(file.body, {
       headers,
     });
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+export async function DELETE(request: Request, context: RouteContext) {
+  try {
+    const { code, entryId } = await context.params;
+    const result = await deleteRoomFile(
+      request,
+      roomCodeSchema.parse(code),
+      roomEntryIdSchema.parse(entryId),
+    );
+    return NextResponse.json(result, { headers: { "cache-control": "private, no-store, max-age=0" } });
   } catch (error) {
     return failure(error);
   }

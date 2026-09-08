@@ -1,4 +1,4 @@
-import { get } from "@vercel/blob";
+import { del, get, head, list } from "@vercel/blob";
 import { z } from "zod";
 import { getSql } from "@/db";
 import type {
@@ -12,8 +12,26 @@ import type {
   RoomSnapshot,
   RoomStatus,
 } from "@/lib/room-contracts";
-import { MAX_ROOM_FILE_BYTES } from "@/lib/room-contracts";
+import {
+  MAX_ROOM_FILE_BYTES,
+  MAX_ROOM_FILES,
+  PROJECT_BLOB_SAFE_BYTES,
+  PROJECT_MAX_BLOB_FILES,
+  PROJECT_DATABASE_CRITICAL_BYTES,
+  PROJECT_DATABASE_WARNING_BYTES,
+  ROOM_FILE_BUDGET_BYTES,
+  ROOM_FILE_WARNING_BYTES,
+  ROOM_HISTORY_BUDGET_BYTES,
+  ROOM_HISTORY_WARNING_BYTES,
+} from "@/lib/room-contracts";
 import { createUuid } from "@/lib/fate";
+import {
+  DELETION_TOMBSTONE_TTL_MS,
+  PENDING_PARTICIPANT_TTL_MS,
+  REJECTED_PARTICIPANT_TTL_MS,
+  UPLOAD_RESERVATION_TTL_MS,
+  selectOrphanBlobPathnames,
+} from "@/lib/storage-policy";
 
 const ROOM_CODE_ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ";
 
@@ -39,6 +57,18 @@ type EntryRow = {
   dataJson: string;
   actorId: string;
   actorName: string;
+  createdAt: number | string;
+};
+
+type UploadReservationRow = {
+  requestId: string;
+  roomId: string;
+  actorId: string;
+  entryId: string;
+  pathname: string;
+  name: string;
+  contentType: string;
+  size: number | string;
   createdAt: number | string;
 };
 
@@ -91,7 +121,8 @@ async function initializeSchema(sql: RoomSql) {
       code TEXT NOT NULL UNIQUE,
       name TEXT NOT NULL,
       request_id TEXT NOT NULL UNIQUE,
-      created_at BIGINT NOT NULL
+      created_at BIGINT NOT NULL,
+      updated_at BIGINT
     )`,
     sql`CREATE TABLE IF NOT EXISTS participants (
       id TEXT PRIMARY KEY,
@@ -113,9 +144,49 @@ async function initializeSchema(sql: RoomSql) {
       type TEXT NOT NULL CHECK (type IN ('roll', 'note', 'rule', 'file')),
       body TEXT NOT NULL,
       data_json TEXT NOT NULL,
+      file_size BIGINT NOT NULL DEFAULT 0,
+      blob_pathname TEXT,
       created_at BIGINT NOT NULL
     )`,
     sql`CREATE INDEX IF NOT EXISTS entries_room_created_idx ON entries(room_id, created_at)`,
+    sql`CREATE INDEX IF NOT EXISTS entries_room_type_idx ON entries(room_id, type)`,
+    sql`ALTER TABLE rooms ADD COLUMN IF NOT EXISTS updated_at BIGINT`,
+    sql`ALTER TABLE entries ADD COLUMN IF NOT EXISTS file_size BIGINT NOT NULL DEFAULT 0`,
+    sql`ALTER TABLE entries ADD COLUMN IF NOT EXISTS blob_pathname TEXT`,
+    sql`UPDATE rooms SET updated_at = created_at WHERE updated_at IS NULL`,
+    sql`UPDATE entries
+        SET file_size = COALESCE(NULLIF(data_json::jsonb ->> 'size', '')::BIGINT, 0),
+            blob_pathname = NULLIF(data_json::jsonb ->> 'pathname', '')
+        WHERE type = 'file' AND (file_size = 0 OR blob_pathname IS NULL)`,
+    sql`CREATE TABLE IF NOT EXISTS upload_reservations (
+      request_id TEXT PRIMARY KEY,
+      room_id TEXT NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+      actor_id TEXT NOT NULL REFERENCES participants(id) ON DELETE CASCADE,
+      entry_id TEXT NOT NULL,
+      pathname TEXT NOT NULL UNIQUE,
+      name TEXT NOT NULL,
+      content_type TEXT NOT NULL,
+      size BIGINT NOT NULL,
+      created_at BIGINT NOT NULL
+    )`,
+    sql`CREATE INDEX IF NOT EXISTS upload_reservations_room_idx ON upload_reservations(room_id)`,
+    sql`CREATE INDEX IF NOT EXISTS upload_reservations_created_idx ON upload_reservations(created_at)`,
+    sql`CREATE TABLE IF NOT EXISTS blob_cleanup_queue (
+      pathname TEXT PRIMARY KEY,
+      room_code TEXT NOT NULL,
+      size BIGINT NOT NULL DEFAULT 0,
+      created_at BIGINT NOT NULL,
+      attempts INTEGER NOT NULL DEFAULT 0,
+      last_error TEXT NOT NULL DEFAULT ''
+    )`,
+    sql`CREATE INDEX IF NOT EXISTS blob_cleanup_created_idx ON blob_cleanup_queue(created_at)`,
+    sql`CREATE TABLE IF NOT EXISTS deleted_rooms (
+      code TEXT PRIMARY KEY,
+      gm_participant_id TEXT NOT NULL,
+      gm_token_hash TEXT NOT NULL,
+      deleted_at BIGINT NOT NULL
+    )`,
+    sql`CREATE INDEX IF NOT EXISTS deleted_rooms_deleted_idx ON deleted_rooms(deleted_at)`,
   ]);
 }
 
@@ -131,7 +202,52 @@ async function getRoomDb() {
     console.error("room-schema-failed", error);
     throw new RoomHttpError("As Mesas estão temporariamente indisponíveis.", 503);
   }
+  // Serverless Functions may end as soon as their response is sent. Awaiting
+  // this bounded repair avoids abandoning physical deletions mid-flight.
+  try {
+    await performBoundedMaintenance(sql);
+  } catch (error) {
+    // Maintenance is reparative: a transient failure must not break the main
+    // read, and its durable queue will be retried by a later request.
+    console.error("room-maintenance-failed", error);
+  }
   return sql;
+}
+
+let lastMaintenanceAt = 0;
+
+async function performBoundedMaintenance(sql: RoomSql) {
+  const now = Date.now();
+  if (now - lastMaintenanceAt < 60_000) return;
+  lastMaintenanceAt = now;
+  await sql.transaction([
+    sql`DELETE FROM upload_reservations WHERE created_at < ${now - UPLOAD_RESERVATION_TTL_MS}`,
+    sql`DELETE FROM participants WHERE status = 'rejected' AND updated_at < ${now - REJECTED_PARTICIPANT_TTL_MS}`,
+    sql`DELETE FROM participants WHERE status = 'pending' AND updated_at < ${now - PENDING_PARTICIPANT_TTL_MS}`,
+    sql`DELETE FROM deleted_rooms WHERE deleted_at < ${now - DELETION_TOMBSTONE_TTL_MS}`,
+  ]);
+  await drainBlobCleanupQueue(sql, 2);
+}
+
+let databaseUsageCache = { bytes: 0, measuredAt: 0 };
+
+async function databaseUsedBytes(sql: RoomSql, fresh = false) {
+  const now = Date.now();
+  if (!fresh && databaseUsageCache.measuredAt && now - databaseUsageCache.measuredAt < 60_000) {
+    return databaseUsageCache.bytes;
+  }
+  const result = await sql`SELECT pg_database_size(current_database())::BIGINT AS bytes`;
+  const bytes = Number(rows<{ bytes: number | string }>(result)[0]?.bytes ?? 0);
+  databaseUsageCache = { bytes, measuredAt: now };
+  return bytes;
+}
+
+async function assertDatabaseWritable(sql: RoomSql) {
+  const bytes = await databaseUsedBytes(sql);
+  if (bytes >= PROJECT_DATABASE_CRITICAL_BYTES) {
+    throw new RoomHttpError("O armazenamento compartilhado está em nível crítico. Exporte ou limpe dados antigos antes de publicar algo novo.", 507);
+  }
+  return bytes;
 }
 
 function cleanCode(value: string) {
@@ -178,6 +294,7 @@ export async function createRoom(input: {
   token: string;
 }) {
   const sql = await getRoomDb();
+  await assertDatabaseWritable(sql);
   const tokenHash = await hashRoomToken(input.token);
   const previous = await findSessionByRequest(sql, input.requestId, tokenHash);
   if (previous) return { ...previous, token: input.token };
@@ -223,6 +340,7 @@ export async function joinRoom(input: {
   token: string;
 }) {
   const sql = await getRoomDb();
+  await assertDatabaseWritable(sql);
   const tokenHash = await hashRoomToken(input.token);
   const previous = await findSessionByRequest(sql, input.requestId, tokenHash);
   if (previous) return { ...previous, token: input.token };
@@ -366,6 +484,43 @@ function readCursor(value?: string | null) {
   return { createdAt: Number(match[1]), id: match[2] };
 }
 
+async function readRoomStorageStats(sql: RoomSql, roomId: string) {
+  const [roomResult, databaseBytes] = await Promise.all([
+    sql`
+      SELECT
+        COALESCE(SUM(file_size) FILTER (WHERE type = 'file'), 0)::BIGINT AS "fileBytes",
+        COUNT(*) FILTER (WHERE type = 'file')::INT AS "fileCount",
+        COALESCE(SUM(
+          OCTET_LENGTH(body) + OCTET_LENGTH(data_json) + OCTET_LENGTH(id) + OCTET_LENGTH(request_id)
+        ) FILTER (WHERE type != 'file'), 0)::BIGINT AS "historyBytes"
+      FROM entries
+      WHERE room_id = ${roomId}
+    `,
+    databaseUsedBytes(sql),
+  ]);
+  const usage = rows<{ fileBytes: number | string; fileCount: number | string; historyBytes: number | string }>(roomResult)[0];
+  return {
+    files: {
+      usedBytes: Number(usage?.fileBytes ?? 0),
+      limitBytes: ROOM_FILE_BUDGET_BYTES,
+      warningBytes: ROOM_FILE_WARNING_BYTES,
+      count: Number(usage?.fileCount ?? 0),
+      maxCount: MAX_ROOM_FILES,
+      maxFileBytes: MAX_ROOM_FILE_BYTES,
+    },
+    history: {
+      usedBytes: Number(usage?.historyBytes ?? 0),
+      warningBytes: ROOM_HISTORY_WARNING_BYTES,
+      guidanceBytes: ROOM_HISTORY_BUDGET_BYTES,
+    },
+    database: {
+      usedBytes: databaseBytes,
+      warningBytes: PROJECT_DATABASE_WARNING_BYTES,
+      criticalBytes: PROJECT_DATABASE_CRITICAL_BYTES,
+    },
+  };
+}
+
 export async function readRoomSnapshot(
   request: Request,
   roomCode: string,
@@ -374,6 +529,7 @@ export async function readRoomSnapshot(
   const sql = await getRoomDb();
   const self = await authorize(request, roomCode);
   const ownParticipant = participantFromRow(self);
+  const storage = await readRoomStorageStats(sql, self.roomId);
 
   if (self.status !== "approved") {
     return {
@@ -382,6 +538,7 @@ export async function readRoomSnapshot(
       participants: [ownParticipant],
       entries: [],
       nextCursor: null,
+      storage,
     };
   }
 
@@ -438,6 +595,7 @@ export async function readRoomSnapshot(
     nextCursor: rows<EntryRow>(entryResult).length > 100 && oldest
       ? `${oldest.createdAt}.${oldest.id}`
       : null,
+    storage,
   };
 }
 
@@ -450,6 +608,7 @@ export async function addRoomEntry(
     | { type: "rule"; requestId: string; title: string; reference: string },
 ) {
   const sql = await getRoomDb();
+  await assertDatabaseWritable(sql);
   const self = await authorize(request, roomCode);
   if (self.status !== "approved") throw new RoomHttpError("Aguarde a aprovação do narrador.", 403);
 
@@ -516,12 +675,66 @@ function cleanContentType(value: string) {
     : "application/octet-stream";
 }
 
+function roomCodeFromPathname(pathname: string) {
+  const match = /^rooms\/([2-9A-HJ-NP-Z]{6})\//.exec(pathname);
+  return match?.[1] ?? "UNKNOWN";
+}
+
+async function queueBlobCleanup(
+  sql: RoomSql,
+  pathname: string,
+  roomCode: string,
+  size = 0,
+) {
+  if (!pathname) return;
+  await sql`
+    INSERT INTO blob_cleanup_queue (pathname, room_code, size, created_at, attempts, last_error)
+    VALUES (${pathname}, ${roomCode}, ${Math.max(0, size)}, ${Date.now()}, 0, '')
+    ON CONFLICT (pathname) DO UPDATE
+    SET size = GREATEST(blob_cleanup_queue.size, EXCLUDED.size)
+  `;
+}
+
+async function drainBlobCleanupQueue(sql: RoomSql, limit = 25, roomCode?: string) {
+  const result = roomCode
+    ? await sql`
+        SELECT pathname FROM blob_cleanup_queue
+        WHERE room_code = ${roomCode}
+        ORDER BY created_at ASC
+        LIMIT ${limit}
+      `
+    : await sql`
+        SELECT pathname FROM blob_cleanup_queue
+        ORDER BY created_at ASC
+        LIMIT ${limit}
+      `;
+  let removed = 0;
+  let pending = 0;
+  for (const item of rows<{ pathname: string }>(result)) {
+    try {
+      await del(item.pathname);
+      await sql`DELETE FROM blob_cleanup_queue WHERE pathname = ${item.pathname}`;
+      removed += 1;
+    } catch (error) {
+      pending += 1;
+      const message = error instanceof Error ? error.message.slice(0, 400) : "Falha temporária ao remover o Blob.";
+      await sql`
+        UPDATE blob_cleanup_queue
+        SET attempts = attempts + 1, last_error = ${message}
+        WHERE pathname = ${item.pathname}
+      `.catch(() => undefined);
+    }
+  }
+  return { removed, pending };
+}
+
 export async function authorizeRoomFileUpload(
   roomCode: string,
   pathname: string,
   input: RoomFileUploadRequest,
 ) {
   const sql = await getRoomDb();
+  await assertDatabaseWritable(sql);
   const self = await authorizeCredentials(input.participantId, input.token, roomCode);
   if (self.status !== "approved") throw new RoomHttpError("Aguarde a aprovação do narrador.", 403);
 
@@ -531,27 +744,92 @@ export async function authorizeRoomFileUpload(
   const previous = await getEntryByRequest(sql, self.roomId, self.id, input.requestId);
   if (previous) throw new RoomHttpError("Este arquivo já foi publicado.", 409);
 
-  const countResult = await sql`
-    SELECT COUNT(*)::int AS total
-    FROM entries
-    WHERE room_id = ${self.roomId} AND type = 'file'
+  const existingResult = await sql`
+    SELECT request_id AS "requestId", room_id AS "roomId", actor_id AS "actorId",
+           entry_id AS "entryId", pathname, name, content_type AS "contentType",
+           size, created_at AS "createdAt"
+    FROM upload_reservations
+    WHERE request_id = ${input.requestId} AND room_id = ${self.roomId} AND actor_id = ${self.id}
+    LIMIT 1
   `;
-  if (Number(rows<{ total: number }>(countResult)[0]?.total ?? 0) >= 1000) {
-    throw new RoomHttpError("Esta Mesa já guardou muitos arquivos.", 409);
+  let reservation = rows<UploadReservationRow>(existingResult)[0];
+  const cleanedName = cleanFileName(input.name);
+  const cleanedContentType = cleanContentType(input.contentType);
+  if (reservation && (reservation.pathname !== expectedPathname || Number(reservation.size) !== input.size)) {
+    throw new RoomHttpError("Este pedido de arquivo não corresponde à reserva já existente.", 409);
+  }
+
+  if (!reservation) {
+    const now = Date.now();
+    const entryId = makeId("entry");
+    const transaction = await sql.transaction([
+      sql`SELECT pg_advisory_xact_lock(hashtext(${self.roomId}))`,
+      sql`DELETE FROM upload_reservations WHERE created_at < ${now - UPLOAD_RESERVATION_TTL_MS}`,
+      sql`
+        INSERT INTO upload_reservations
+          (request_id, room_id, actor_id, entry_id, pathname, name, content_type, size, created_at)
+        SELECT
+          ${input.requestId}, ${self.roomId}, ${self.id}, ${entryId}, ${expectedPathname},
+          ${cleanedName}, ${cleanedContentType}, ${input.size}, ${now}
+        WHERE
+          ${input.size} > 0
+          AND ${input.size} <= ${MAX_ROOM_FILE_BYTES}
+          AND (
+            SELECT COALESCE(SUM(file_size), 0) FROM entries
+            WHERE room_id = ${self.roomId} AND type = 'file'
+          ) + (
+            SELECT COALESCE(SUM(size), 0) FROM upload_reservations
+            WHERE room_id = ${self.roomId}
+          ) + ${input.size} <= ${ROOM_FILE_BUDGET_BYTES}
+          AND (
+            SELECT COUNT(*) FROM entries
+            WHERE room_id = ${self.roomId} AND type = 'file'
+          ) + (
+            SELECT COUNT(*) FROM upload_reservations
+            WHERE room_id = ${self.roomId}
+          ) + 1 <= ${MAX_ROOM_FILES}
+          AND (
+            SELECT COALESCE(SUM(file_size), 0) FROM entries WHERE type = 'file'
+          ) + (
+            SELECT COALESCE(SUM(size), 0) FROM upload_reservations
+          ) + (
+            SELECT COALESCE(SUM(size), 0) FROM blob_cleanup_queue
+          ) + ${input.size} <= ${PROJECT_BLOB_SAFE_BYTES}
+          AND (
+            SELECT COUNT(*) FROM entries WHERE type = 'file'
+          ) + (
+            SELECT COUNT(*) FROM upload_reservations
+          ) + (
+            SELECT COUNT(*) FROM blob_cleanup_queue
+          ) + 1 <= ${PROJECT_MAX_BLOB_FILES}
+        ON CONFLICT (request_id) DO NOTHING
+        RETURNING request_id AS "requestId", room_id AS "roomId", actor_id AS "actorId",
+                  entry_id AS "entryId", pathname, name, content_type AS "contentType",
+                  size, created_at AS "createdAt"
+      `,
+    ]);
+    reservation = rows<UploadReservationRow>(transaction.at(-1))[0];
+    if (!reservation) {
+      const stats = await readRoomStorageStats(sql, self.roomId);
+      if (stats.files.count >= MAX_ROOM_FILES) {
+        throw new RoomHttpError(`Esta Mesa chegou a ${MAX_ROOM_FILES} arquivos. Exclua um arquivo antes de enviar outro.`, 409);
+      }
+      throw new RoomHttpError("Este arquivo ultrapassaria o espaço seguro da Mesa. Exporte ou exclua arquivos antes de continuar.", 507);
+    }
   }
 
   return JSON.stringify({
     version: 1,
-    roomId: self.roomId,
-    actorId: self.id,
+    roomId: reservation.roomId,
+    actorId: reservation.actorId,
     actorName: self.name,
-    requestId: input.requestId,
-    entryId: makeId("entry"),
-    name: cleanFileName(input.name),
-    contentType: cleanContentType(input.contentType),
-    size: input.size,
-    pathname: expectedPathname,
-    createdAt: Date.now(),
+    requestId: reservation.requestId,
+    entryId: reservation.entryId,
+    name: reservation.name,
+    contentType: reservation.contentType,
+    size: Number(reservation.size),
+    pathname: reservation.pathname,
+    createdAt: Number(reservation.createdAt),
   });
 }
 
@@ -563,8 +841,19 @@ export async function completeRoomFileUpload(
   if (blob.pathname !== payload.pathname) throw new Error("Uploaded pathname does not match its token.");
 
   const sql = await getRoomDb();
+  const metadata = await head(blob.pathname);
+  if (metadata.pathname !== payload.pathname || metadata.size !== payload.size) {
+    await del(blob.pathname).catch(async () => {
+      await queueBlobCleanup(sql, payload.pathname, roomCodeFromPathname(payload.pathname), metadata.size).catch(() => undefined);
+    });
+    await sql`DELETE FROM upload_reservations WHERE request_id = ${payload.requestId}`.catch(() => undefined);
+    throw new Error("Uploaded Blob metadata does not match its reserved size.");
+  }
   const previous = await getEntryByRequest(sql, payload.roomId, payload.actorId, payload.requestId);
-  if (previous) return previous;
+  if (previous) {
+    await sql`DELETE FROM upload_reservations WHERE request_id = ${payload.requestId}`;
+    return previous;
+  }
 
   const participantResult = await sql`
     SELECT id, name
@@ -573,27 +862,37 @@ export async function completeRoomFileUpload(
     LIMIT 1
   `;
   const participant = rows<{ id: string; name: string }>(participantResult)[0];
-  if (!participant) throw new Error("The participant can no longer publish to this room.");
+  if (!participant) {
+    await del(blob.pathname).catch(() => undefined);
+    await sql`DELETE FROM upload_reservations WHERE request_id = ${payload.requestId}`;
+    throw new Error("The participant can no longer publish to this room.");
+  }
 
   const storedData: StoredRoomFileData = {
     name: payload.name,
-    contentType: cleanContentType(blob.contentType || payload.contentType),
-    size: payload.size,
+    contentType: cleanContentType(metadata.contentType || blob.contentType || payload.contentType),
+    size: metadata.size,
     blobUrl: blob.url,
     pathname: blob.pathname,
   };
 
   try {
-    const inserted = await sql`
-      INSERT INTO entries
-        (id, room_id, actor_id, request_id, type, body, data_json, created_at)
-      VALUES (
-        ${payload.entryId}, ${payload.roomId}, ${payload.actorId}, ${payload.requestId}, 'file',
-        ${payload.name}, ${JSON.stringify(storedData)}, ${payload.createdAt}
-      )
-      ON CONFLICT (request_id) DO NOTHING
-      RETURNING id
-    `;
+    const transaction = await sql.transaction([
+      sql`SELECT pg_advisory_xact_lock(hashtext(${payload.roomId}))`,
+      sql`
+        INSERT INTO entries
+          (id, room_id, actor_id, request_id, type, body, data_json, file_size, blob_pathname, created_at)
+        VALUES (
+          ${payload.entryId}, ${payload.roomId}, ${payload.actorId}, ${payload.requestId}, 'file',
+          ${payload.name}, ${JSON.stringify(storedData)}, ${payload.size}, ${blob.pathname}, ${payload.createdAt}
+        )
+        ON CONFLICT (request_id) DO NOTHING
+        RETURNING id
+      `,
+      sql`DELETE FROM upload_reservations WHERE request_id = ${payload.requestId}`,
+      sql`UPDATE rooms SET updated_at = ${Date.now()} WHERE id = ${payload.roomId}`,
+    ]);
+    const inserted = transaction[1];
     if (!rows<{ id: string }>(inserted).length) {
       const replay = await getEntryByRequest(sql, payload.roomId, payload.actorId, payload.requestId);
       if (replay) return replay;
@@ -601,7 +900,14 @@ export async function completeRoomFileUpload(
     }
   } catch (error) {
     const replay = await getEntryByRequest(sql, payload.roomId, payload.actorId, payload.requestId).catch(() => null);
-    if (replay) return replay;
+    if (replay) {
+      await sql`DELETE FROM upload_reservations WHERE request_id = ${payload.requestId}`.catch(() => undefined);
+      return replay;
+    }
+    await queueBlobCleanup(sql, payload.pathname, roomCodeFromPathname(payload.pathname), payload.size).catch(() => undefined);
+    await drainBlobCleanupQueue(sql, 1).catch(async () => {
+      await del(payload.pathname).catch(() => undefined);
+    });
     console.error("room-file-failed", error);
     throw error;
   }
@@ -656,6 +962,202 @@ export async function readRoomFile(request: Request, roomCode: string, entryId: 
     contentType: cleanContentType(data.contentType || object.blob.contentType || ""),
     size: Number(data.size) || undefined,
   };
+}
+
+export async function deleteRoomFile(request: Request, roomCode: string, entryId: string) {
+  const sql = await getRoomDb();
+  const self = await authorize(request, roomCode);
+  if (self.status !== "approved") throw new RoomHttpError("Aguarde a aprovação do narrador.", 403);
+
+  const result = await sql`
+    SELECT actor_id AS "actorId", body, data_json AS "dataJson",
+           file_size AS "fileSize", blob_pathname AS "blobPathname"
+    FROM entries
+    WHERE id = ${entryId} AND room_id = ${self.roomId} AND type = 'file'
+    LIMIT 1
+  `;
+  const file = rows<{ actorId: string; body: string; dataJson: string; fileSize: number | string; blobPathname: string | null }>(result)[0];
+  if (!file) return { deleted: false, bytesFreed: 0, cleanupPending: false };
+  if (self.role !== "gm" && file.actorId !== self.id) {
+    throw new RoomHttpError("Somente o narrador ou quem enviou este arquivo pode excluí-lo.", 403);
+  }
+
+  let pathname = file.blobPathname ?? "";
+  if (!pathname) {
+    try {
+      pathname = String((JSON.parse(file.dataJson) as Partial<StoredRoomFileData>).pathname ?? "");
+    } catch {
+      pathname = "";
+    }
+  }
+  const fileSize = Number(file.fileSize) || 0;
+  const queries = [sql`SELECT pg_advisory_xact_lock(hashtext(${self.roomId}))`];
+  if (pathname) {
+    queries.push(sql`
+      INSERT INTO blob_cleanup_queue (pathname, room_code, size, created_at, attempts, last_error)
+      VALUES (${pathname}, ${self.roomCode}, ${fileSize}, ${Date.now()}, 0, '')
+      ON CONFLICT (pathname) DO NOTHING
+    `);
+  }
+  queries.push(
+    sql`DELETE FROM entries WHERE id = ${entryId} AND room_id = ${self.roomId} AND type = 'file'`,
+    sql`UPDATE rooms SET updated_at = ${Date.now()} WHERE id = ${self.roomId}`,
+  );
+  await sql.transaction(queries);
+  const cleanup = pathname ? await drainBlobCleanupQueue(sql, 1, self.roomCode) : { removed: 0, pending: 0 };
+  return { deleted: true, bytesFreed: fileSize, cleanupPending: cleanup.pending > 0 };
+}
+
+async function deletedRoomReplay(sql: RoomSql, roomCode: string, participantId: string, token: string) {
+  const tokenHash = await hashRoomToken(token);
+  const result = await sql`
+    SELECT code FROM deleted_rooms
+    WHERE code = ${cleanCode(roomCode)}
+      AND gm_participant_id = ${participantId}
+      AND gm_token_hash = ${tokenHash}
+    LIMIT 1
+  `;
+  return rows<{ code: string }>(result).length > 0;
+}
+
+export async function deleteRoom(request: Request, roomCode: string) {
+  const sql = await getRoomDb();
+  const credentials = readCredentials(request);
+  let self: AuthRow;
+  try {
+    self = await authorizeCredentials(credentials.participantId, credentials.token, roomCode);
+  } catch (error) {
+    if (error instanceof RoomHttpError && error.status === 401 && await deletedRoomReplay(sql, roomCode, credentials.participantId, credentials.token)) {
+      return { deleted: false, filesQueued: 0, cleanupPending: false };
+    }
+    throw error;
+  }
+  if (self.role !== "gm" || self.status !== "approved") {
+    throw new RoomHttpError("Somente o narrador pode excluir a Mesa inteira.", 403);
+  }
+  const tokenHash = await hashRoomToken(credentials.token);
+  const countResult = await sql`
+    SELECT COUNT(*)::INT AS count
+    FROM entries
+    WHERE room_id = ${self.roomId} AND type = 'file' AND blob_pathname IS NOT NULL
+  `;
+  const fileCount = Number(rows<{ count: number | string }>(countResult)[0]?.count ?? 0);
+  const now = Date.now();
+  await sql.transaction([
+    sql`SELECT pg_advisory_xact_lock(hashtext(${self.roomId}))`,
+    sql`
+      INSERT INTO deleted_rooms (code, gm_participant_id, gm_token_hash, deleted_at)
+      VALUES (${self.roomCode}, ${self.id}, ${tokenHash}, ${now})
+      ON CONFLICT (code) DO UPDATE
+      SET gm_participant_id = EXCLUDED.gm_participant_id,
+          gm_token_hash = EXCLUDED.gm_token_hash,
+          deleted_at = EXCLUDED.deleted_at
+    `,
+    sql`
+      INSERT INTO blob_cleanup_queue (pathname, room_code, size, created_at, attempts, last_error)
+      SELECT blob_pathname, ${self.roomCode}, file_size, ${now}, 0, ''
+      FROM entries
+      WHERE room_id = ${self.roomId} AND type = 'file' AND blob_pathname IS NOT NULL
+      ON CONFLICT (pathname) DO NOTHING
+    `,
+    sql`DELETE FROM rooms WHERE id = ${self.roomId}`,
+  ]);
+  const cleanup = await drainBlobCleanupQueue(sql, MAX_ROOM_FILES, self.roomCode);
+  return { deleted: true, filesQueued: fileCount, cleanupPending: cleanup.pending > 0 };
+}
+
+export async function cleanupRoomOrphanBlobs(request: Request, roomCode: string) {
+  const sql = await getRoomDb();
+  const self = await authorize(request, roomCode);
+  if (self.role !== "gm" || self.status !== "approved") {
+    throw new RoomHttpError("Somente o narrador pode procurar arquivos órfãos desta Mesa.", 403);
+  }
+  const referencesResult = await sql`
+    SELECT blob_pathname AS pathname FROM entries
+    WHERE room_id = ${self.roomId} AND type = 'file' AND blob_pathname IS NOT NULL
+    UNION
+    SELECT pathname FROM upload_reservations WHERE room_id = ${self.roomId}
+  `;
+  const referenced = new Set(rows<{ pathname: string }>(referencesResult).map((item) => item.pathname));
+  const blobs: Array<{ pathname: string; uploadedAt: Date; size?: number }> = [];
+  let cursor: string | undefined;
+  for (let pageIndex = 0; pageIndex < 10; pageIndex += 1) {
+    const page = await list({ prefix: `rooms/${self.roomCode}/`, limit: 1000, cursor });
+    blobs.push(...page.blobs.map((blob) => ({ pathname: blob.pathname, uploadedAt: blob.uploadedAt, size: blob.size })));
+    if (!page.hasMore || !page.cursor) break;
+    cursor = page.cursor;
+  }
+  const orphanPathnames = selectOrphanBlobPathnames(blobs, referenced);
+  for (const pathname of orphanPathnames) {
+    const blob = blobs.find((item) => item.pathname === pathname);
+    await queueBlobCleanup(sql, pathname, self.roomCode, blob?.size ?? 0);
+  }
+  const cleanup = await drainBlobCleanupQueue(sql, orphanPathnames.length, self.roomCode);
+  return { found: orphanPathnames.length, removed: cleanup.removed, pending: cleanup.pending };
+}
+
+export async function clearRoomHistoryBefore(request: Request, roomCode: string, before: number) {
+  const sql = await getRoomDb();
+  const self = await authorize(request, roomCode);
+  if (self.role !== "gm" || self.status !== "approved") {
+    throw new RoomHttpError("Somente o narrador pode limpar partes antigas do Histórico.", 403);
+  }
+  if (!Number.isSafeInteger(before) || before <= 0 || before >= Date.now()) {
+    throw new RoomHttpError("Escolha uma data válida dentro da história desta Mesa.", 400);
+  }
+  const measured = await sql`
+    SELECT COUNT(*)::INT AS count,
+           COALESCE(SUM(OCTET_LENGTH(body) + OCTET_LENGTH(data_json)), 0)::BIGINT AS bytes
+    FROM entries
+    WHERE room_id = ${self.roomId} AND type != 'file' AND created_at < ${before}
+  `;
+  const amount = rows<{ count: number | string; bytes: number | string }>(measured)[0];
+  await sql.transaction([
+    sql`SELECT pg_advisory_xact_lock(hashtext(${self.roomId}))`,
+    sql`DELETE FROM entries WHERE room_id = ${self.roomId} AND type != 'file' AND created_at < ${before}`,
+    sql`UPDATE rooms SET updated_at = ${Date.now()} WHERE id = ${self.roomId}`,
+  ]);
+  return { removed: Number(amount?.count ?? 0), bytesFreed: Number(amount?.bytes ?? 0) };
+}
+
+export async function streamRoomHistory(request: Request, roomCode: string) {
+  const sql = await getRoomDb();
+  const self = await authorize(request, roomCode);
+  if (self.status !== "approved") throw new RoomHttpError("Aguarde a aprovação do narrador.", 403);
+  const encoder = new TextEncoder();
+  let cursor: { createdAt: number; id: string } | null = null;
+  let finished = false;
+  return new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      if (finished) return controller.close();
+      const result = cursor
+        ? await sql`
+            SELECT e.id, e.type, e.body, e.data_json AS "dataJson",
+                   e.actor_id AS "actorId", p.name AS "actorName", e.created_at AS "createdAt"
+            FROM entries e JOIN participants p ON p.id = e.actor_id
+            WHERE e.room_id = ${self.roomId}
+              AND (e.created_at > ${cursor.createdAt} OR (e.created_at = ${cursor.createdAt} AND e.id > ${cursor.id}))
+            ORDER BY e.created_at ASC, e.id ASC LIMIT 200
+          `
+        : await sql`
+            SELECT e.id, e.type, e.body, e.data_json AS "dataJson",
+                   e.actor_id AS "actorId", p.name AS "actorName", e.created_at AS "createdAt"
+            FROM entries e JOIN participants p ON p.id = e.actor_id
+            WHERE e.room_id = ${self.roomId}
+            ORDER BY e.created_at ASC, e.id ASC LIMIT 200
+          `;
+      const page = rows<EntryRow>(result);
+      if (!page.length) {
+        finished = true;
+        controller.close();
+        return;
+      }
+      const last = page.at(-1)!;
+      cursor = { createdAt: Number(last.createdAt), id: last.id };
+      controller.enqueue(encoder.encode(page.map((row) => JSON.stringify(entryFromRow(row))).join("\n") + "\n"));
+      if (page.length < 200) finished = true;
+    },
+  });
 }
 
 export async function decideRoomParticipant(

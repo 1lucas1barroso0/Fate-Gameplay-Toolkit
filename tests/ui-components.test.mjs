@@ -421,7 +421,7 @@ test("applies the final room, roll and settings wording without mixing indirect 
   assert.match(dice, /FATE_PROBABILITIES_DESCENDING = \[\.\.\.FATE_PROBABILITIES\]\.sort\(\(left, right\) => right\.total - left\.total\)/);
   assert.match(dice, /<div className="empty-inline">As rolagens aparecerão aqui\.<\/div>/);
   assert.doesNotMatch(dice, /<RotateCcw \/> As rolagens aparecerão aqui/);
-  assert.match(rooms, /<\/nav>\s*\{store\.session && linkedProfile && \(\s*<div className="room-rules-choice">/);
+  assert.match(rooms, /\{store\.session && linkedProfile && \(\s*<div className="room-rules-choice">/);
   assert.doesNotMatch(rooms, /room-quick-action-group/);
   assert.match(rooms, /<Label htmlFor="room-note">Notas da mesa<\/Label>/);
   assert.doesNotMatch(rooms, /id="room-note"[^>]*placeholder=/);
@@ -470,7 +470,7 @@ test("keeps every room file durable, private to approved participants, and visib
   assert.ok(dependencies["@neondatabase/serverless"]);
   assert.ok(dependencies["@vercel/blob"]);
   assert.match(contracts, /RoomEntryType = "roll" \| "note" \| "rule" \| "file"/);
-  assert.match(contracts, /50 \* 1024 \* 1024/);
+  assert.match(contracts, /MAX_ROOM_FILE_BYTES/);
   assert.match(schema, /\["roll", "note", "rule", "file"\]/);
   assert.match(server, /authorizeRoomFileUpload/);
   assert.match(server, /completeRoomFileUpload/);
