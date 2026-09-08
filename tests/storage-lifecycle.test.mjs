@@ -210,3 +210,22 @@ test("wires physical Blob deletion, room cascades, pagination and bounded retent
   assert.match(schema, /onDelete: "cascade"/);
   assert.match(schema, /entries_room_created_idx/);
 });
+
+test("serializes shared Blob capacity and repairs late uploads without unbounded ledgers", async () => {
+  const [server, policy, schema] = await Promise.all([
+    readFile(path.join(root, "lib/server/rooms.ts"), "utf8"),
+    readFile(path.join(root, "lib/storage-policy.ts"), "utf8"),
+    readFile(path.join(root, "db/schema.ts"), "utf8"),
+  ]);
+  assert.match(server, /GLOBAL_BLOB_STORAGE_LOCK/);
+  assert.match(server, /pg_advisory_xact_lock\(hashtext\(\$\{GLOBAL_BLOB_STORAGE_LOCK\}\)\)/);
+  assert.match(server, /request_id != \$\{payload\.requestId\}/);
+  assert.match(server, /await drainBlobCleanupQueue/);
+  assert.match(server, /rescanDeletedRoomBlobs/);
+  assert.match(server, /ORDER BY attempts ASC, created_at ASC/);
+  assert.match(server, /DELETE FROM blob_usage_ledger WHERE created_at/);
+  assert.match(policy, /BLOB_USAGE_WINDOW_MS = 30 \* 24 \* 60 \* 60 \* 1000/);
+  assert.match(policy, /DELETED_ROOM_RESCAN_LIMIT = 7/);
+  assert.match(schema, /blobUsageLedger/);
+  assert.match(schema, /entries_room_created_id_idx/);
+});

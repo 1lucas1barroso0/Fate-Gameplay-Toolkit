@@ -44,6 +44,15 @@ import {
 const ROOM_CODE_ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ";
 const MAX_ROOM_PARTICIPANTS = 64;
 const GLOBAL_BLOB_STORAGE_LOCK = "fate-gameplay-toolkit:blob-storage";
+const DELETED_ROOM_RESCAN_DELAYS_MS = [
+  0,
+  5 * 60 * 1000,
+  60 * 60 * 1000,
+  6 * 60 * 60 * 1000,
+  24 * 60 * 60 * 1000,
+  7 * 24 * 60 * 60 * 1000,
+  14 * 24 * 60 * 60 * 1000,
+] as const;
 
 type RoomSql = ReturnType<typeof getSql>;
 
@@ -159,6 +168,7 @@ async function initializeSchema(sql: RoomSql) {
       created_at BIGINT NOT NULL
     )`,
     sql`CREATE INDEX IF NOT EXISTS entries_room_created_idx ON entries(room_id, created_at)`,
+    sql`CREATE INDEX IF NOT EXISTS entries_room_created_id_idx ON entries(room_id, created_at, id)`,
     sql`CREATE INDEX IF NOT EXISTS entries_room_type_idx ON entries(room_id, type)`,
     sql`ALTER TABLE rooms ADD COLUMN IF NOT EXISTS updated_at BIGINT`,
     sql`ALTER TABLE entries ADD COLUMN IF NOT EXISTS file_size BIGINT NOT NULL DEFAULT 0`,
@@ -190,6 +200,7 @@ async function initializeSchema(sql: RoomSql) {
       last_error TEXT NOT NULL DEFAULT ''
     )`,
     sql`CREATE INDEX IF NOT EXISTS blob_cleanup_created_idx ON blob_cleanup_queue(created_at)`,
+    sql`CREATE INDEX IF NOT EXISTS blob_cleanup_attempt_idx ON blob_cleanup_queue(attempts, created_at)`,
     sql`CREATE TABLE IF NOT EXISTS deleted_rooms (
       code TEXT PRIMARY KEY,
       gm_participant_id TEXT NOT NULL,
@@ -245,7 +256,10 @@ async function performBoundedMaintenance(sql: RoomSql) {
   lastMaintenanceAt = now;
   await sql.transaction([
     sql`DELETE FROM upload_reservations WHERE created_at < ${now - UPLOAD_RESERVATION_TTL_MS}`,
-    sql`DELETE FROM participants WHERE status = 'rejected' AND updated_at < ${now - REJECTED_PARTICIPANT_TTL_MS}`,
+    sql`DELETE FROM participants p
+        WHERE p.status = 'rejected'
+          AND p.updated_at < ${now - REJECTED_PARTICIPANT_TTL_MS}
+          AND NOT EXISTS (SELECT 1 FROM entries e WHERE e.actor_id = p.id)`,
     sql`DELETE FROM participants WHERE status = 'pending' AND updated_at < ${now - PENDING_PARTICIPANT_TTL_MS}`,
     sql`DELETE FROM blob_usage_ledger WHERE created_at < ${now - BLOB_USAGE_LEDGER_TTL_MS}`,
     sql`DELETE FROM deleted_rooms WHERE deleted_at < ${now - DELETION_TOMBSTONE_TTL_MS}`,
@@ -403,7 +417,8 @@ export async function createRoom(input: {
       const inserted = await sql`
         WITH inserted_room AS (
           INSERT INTO rooms (id, code, name, request_id, created_at)
-          VALUES (${roomId}, ${code}, ${input.roomName}, ${input.requestId}, ${now})
+          SELECT ${roomId}, ${code}, ${input.roomName}, ${input.requestId}, ${now}
+          WHERE NOT EXISTS (SELECT 1 FROM deleted_rooms WHERE code = ${code})
           ON CONFLICT (code) DO NOTHING
           RETURNING id
         )
@@ -465,11 +480,12 @@ export async function joinRoom(input: {
     if (!rows<{ id: string }>(inserted).length) {
       const replay = await findSessionByRequest(sql, input.requestId, tokenHash);
       if (replay) return { ...replay, token: input.token };
-      throw new Error("Join request conflicted.");
+      throw new RoomHttpError("Esta Mesa atingiu o limite de participantes.", 409);
     }
   } catch (error) {
     const replay = await findSessionByRequest(sql, input.requestId, tokenHash).catch(() => null);
     if (replay) return { ...replay, token: input.token };
+    if (error instanceof RoomHttpError) throw error;
     console.error("room-join-failed", error);
     throw new RoomHttpError("O pedido de entrada não foi salvo. Tente novamente.", 503);
   }
@@ -791,25 +807,28 @@ async function queueBlobCleanup(
 async function drainBlobCleanupQueue(sql: RoomSql, limit = 25, roomCode?: string) {
   const result = roomCode
     ? await sql`
-        SELECT pathname FROM blob_cleanup_queue
+        SELECT pathname, attempts FROM blob_cleanup_queue
         WHERE room_code = ${roomCode}
-        ORDER BY created_at ASC
+        ORDER BY attempts ASC, created_at ASC
         LIMIT ${limit}
       `
     : await sql`
-        SELECT pathname FROM blob_cleanup_queue
-        ORDER BY created_at ASC
+        SELECT pathname, attempts FROM blob_cleanup_queue
+        ORDER BY attempts ASC, created_at ASC
         LIMIT ${limit}
       `;
   let removed = 0;
-  let pending = 0;
-  for (const item of rows<{ pathname: string }>(result)) {
+  for (const item of rows<{ pathname: string; attempts: number | string }>(result)) {
     try {
+      await reserveBlobUsage(
+        sql,
+        { simpleOps: 1 },
+        { eventId: blobUsageEventId(`delete:${item.pathname}:${Number(item.attempts) + 1}`), maintenance: true },
+      );
       await del(item.pathname);
       await sql`DELETE FROM blob_cleanup_queue WHERE pathname = ${item.pathname}`;
       removed += 1;
     } catch (error) {
-      pending += 1;
       const message = error instanceof Error ? error.message.slice(0, 400) : "Falha temporária ao remover o Blob.";
       await sql`
         UPDATE blob_cleanup_queue
@@ -818,7 +837,76 @@ async function drainBlobCleanupQueue(sql: RoomSql, limit = 25, roomCode?: string
       `.catch(() => undefined);
     }
   }
+  const pendingResult = roomCode
+    ? await sql`SELECT COUNT(*)::INT AS count FROM blob_cleanup_queue WHERE room_code = ${roomCode}`
+    : await sql`SELECT COUNT(*)::INT AS count FROM blob_cleanup_queue`;
+  const pending = Number(rows<{ count: number | string }>(pendingResult)[0]?.count ?? 0);
   return { removed, pending };
+}
+
+async function rescanDeletedRoomBlobs(sql: RoomSql, limit = 1) {
+  const now = Date.now();
+  const candidates = await sql`
+    SELECT code, last_scan_at AS "lastScanAt", scan_count AS "scanCount"
+    FROM deleted_rooms
+    WHERE scan_count < ${DELETED_ROOM_RESCAN_LIMIT}
+      AND (
+        last_scan_at = 0 OR last_scan_at <= ${now} - CASE scan_count
+          WHEN 0 THEN ${DELETED_ROOM_RESCAN_DELAYS_MS[0]}
+          WHEN 1 THEN ${DELETED_ROOM_RESCAN_DELAYS_MS[1]}
+          WHEN 2 THEN ${DELETED_ROOM_RESCAN_DELAYS_MS[2]}
+          WHEN 3 THEN ${DELETED_ROOM_RESCAN_DELAYS_MS[3]}
+          WHEN 4 THEN ${DELETED_ROOM_RESCAN_DELAYS_MS[4]}
+          WHEN 5 THEN ${DELETED_ROOM_RESCAN_DELAYS_MS[5]}
+          ELSE ${DELETED_ROOM_RESCAN_DELAYS_MS[6]}
+        END
+      )
+    ORDER BY last_scan_at ASC, deleted_at ASC
+    LIMIT ${limit}
+  `;
+  let scanned = 0;
+  for (const candidate of rows<{ code: string; lastScanAt: number | string; scanCount: number | string }>(candidates)) {
+    if (scanned >= limit) break;
+    const scanCount = Number(candidate.scanCount);
+    const lastScanAt = Number(candidate.lastScanAt);
+    const delay = DELETED_ROOM_RESCAN_DELAYS_MS[Math.min(scanCount, DELETED_ROOM_RESCAN_DELAYS_MS.length - 1)];
+    if (lastScanAt > 0 && now - lastScanAt < delay) continue;
+
+    const claim = await sql`
+      UPDATE deleted_rooms
+      SET last_scan_at = ${now}, scan_count = scan_count + 1
+      WHERE code = ${candidate.code}
+        AND last_scan_at = ${lastScanAt}
+        AND scan_count = ${scanCount}
+      RETURNING code
+    `;
+    if (!rows<{ code: string }>(claim).length) continue;
+
+    try {
+      let cursor: string | undefined;
+      let discovered = 0;
+      for (let pageIndex = 0; pageIndex < 10; pageIndex += 1) {
+        await reserveBlobUsage(sql, { advancedOps: 1 }, { maintenance: true });
+        const page = await list({ prefix: `rooms/${candidate.code}/`, limit: 1000, cursor });
+        for (const blob of page.blobs) {
+          await queueBlobCleanup(sql, blob.pathname, candidate.code, blob.size);
+          discovered += 1;
+        }
+        if (!page.hasMore || !page.cursor) break;
+        cursor = page.cursor;
+      }
+      if (discovered) await drainBlobCleanupQueue(sql, Math.min(discovered, 25), candidate.code);
+      scanned += 1;
+    } catch (error) {
+      await sql`
+        UPDATE deleted_rooms
+        SET last_scan_at = ${lastScanAt}, scan_count = ${scanCount}
+        WHERE code = ${candidate.code} AND last_scan_at = ${now}
+      `.catch(() => undefined);
+      console.error("deleted-room-blob-rescan-failed", error);
+    }
+  }
+  return { scanned };
 }
 
 export async function authorizeRoomFileUpload(
@@ -852,57 +940,68 @@ export async function authorizeRoomFileUpload(
     throw new RoomHttpError("Este pedido de arquivo não corresponde à reserva já existente.", 409);
   }
 
+  const usageReservation = await reserveBlobUsage(
+    sql,
+    { simpleOps: 1 },
+    { eventId: `upload:${input.requestId}` },
+  );
   if (!reservation) {
     const now = Date.now();
     const entryId = makeId("entry");
-    const transaction = await sql.transaction([
-      sql`SELECT pg_advisory_xact_lock(hashtext(${self.roomId}))`,
-      sql`DELETE FROM upload_reservations WHERE created_at < ${now - UPLOAD_RESERVATION_TTL_MS}`,
-      sql`
-        INSERT INTO upload_reservations
-          (request_id, room_id, actor_id, entry_id, pathname, name, content_type, size, created_at)
-        SELECT
-          ${input.requestId}, ${self.roomId}, ${self.id}, ${entryId}, ${expectedPathname},
-          ${cleanedName}, ${cleanedContentType}, ${input.size}, ${now}
-        WHERE
-          ${input.size} > 0
-          AND ${input.size} <= ${MAX_ROOM_FILE_BYTES}
-          AND (
-            SELECT COALESCE(SUM(file_size), 0) FROM entries
-            WHERE room_id = ${self.roomId} AND type = 'file'
-          ) + (
-            SELECT COALESCE(SUM(size), 0) FROM upload_reservations
-            WHERE room_id = ${self.roomId}
-          ) + ${input.size} <= ${ROOM_FILE_BUDGET_BYTES}
-          AND (
-            SELECT COUNT(*) FROM entries
-            WHERE room_id = ${self.roomId} AND type = 'file'
-          ) + (
-            SELECT COUNT(*) FROM upload_reservations
-            WHERE room_id = ${self.roomId}
-          ) + 1 <= ${MAX_ROOM_FILES}
-          AND (
-            SELECT COALESCE(SUM(file_size), 0) FROM entries WHERE type = 'file'
-          ) + (
-            SELECT COALESCE(SUM(size), 0) FROM upload_reservations
-          ) + (
-            SELECT COALESCE(SUM(size), 0) FROM blob_cleanup_queue
-          ) + ${input.size} <= ${PROJECT_BLOB_SAFE_BYTES}
-          AND (
-            SELECT COUNT(*) FROM entries WHERE type = 'file'
-          ) + (
-            SELECT COUNT(*) FROM upload_reservations
-          ) + (
-            SELECT COUNT(*) FROM blob_cleanup_queue
-          ) + 1 <= ${PROJECT_MAX_BLOB_FILES}
-        ON CONFLICT (request_id) DO NOTHING
-        RETURNING request_id AS "requestId", room_id AS "roomId", actor_id AS "actorId",
-                  entry_id AS "entryId", pathname, name, content_type AS "contentType",
-                  size, created_at AS "createdAt"
-      `,
-    ]);
-    reservation = rows<UploadReservationRow>(transaction.at(-1))[0];
+    try {
+      const transaction = await sql.transaction([
+        sql`SELECT pg_advisory_xact_lock(hashtext(${GLOBAL_BLOB_STORAGE_LOCK}))`,
+        sql`DELETE FROM upload_reservations WHERE created_at < ${now - UPLOAD_RESERVATION_TTL_MS}`,
+        sql`
+          INSERT INTO upload_reservations
+            (request_id, room_id, actor_id, entry_id, pathname, name, content_type, size, created_at)
+          SELECT
+            ${input.requestId}, ${self.roomId}, ${self.id}, ${entryId}, ${expectedPathname},
+            ${cleanedName}, ${cleanedContentType}, ${input.size}, ${now}
+          WHERE
+            ${input.size} > 0
+            AND ${input.size} <= ${MAX_ROOM_FILE_BYTES}
+            AND (
+              SELECT COALESCE(SUM(file_size), 0) FROM entries
+              WHERE room_id = ${self.roomId} AND type = 'file'
+            ) + (
+              SELECT COALESCE(SUM(size), 0) FROM upload_reservations
+              WHERE room_id = ${self.roomId}
+            ) + ${input.size} <= ${ROOM_FILE_BUDGET_BYTES}
+            AND (
+              SELECT COUNT(*) FROM entries
+              WHERE room_id = ${self.roomId} AND type = 'file'
+            ) + (
+              SELECT COUNT(*) FROM upload_reservations
+              WHERE room_id = ${self.roomId}
+            ) + 1 <= ${MAX_ROOM_FILES}
+            AND (
+              SELECT COALESCE(SUM(file_size), 0) FROM entries WHERE type = 'file'
+            ) + (
+              SELECT COALESCE(SUM(size), 0) FROM upload_reservations
+            ) + (
+              SELECT COALESCE(SUM(size), 0) FROM blob_cleanup_queue
+            ) + ${input.size} <= ${PROJECT_BLOB_SAFE_BYTES}
+            AND (
+              SELECT COUNT(*) FROM entries WHERE type = 'file'
+            ) + (
+              SELECT COUNT(*) FROM upload_reservations
+            ) + (
+              SELECT COUNT(*) FROM blob_cleanup_queue
+            ) + 1 <= ${PROJECT_MAX_BLOB_FILES}
+          ON CONFLICT (request_id) DO NOTHING
+          RETURNING request_id AS "requestId", room_id AS "roomId", actor_id AS "actorId",
+                    entry_id AS "entryId", pathname, name, content_type AS "contentType",
+                    size, created_at AS "createdAt"
+        `,
+      ]);
+      reservation = rows<UploadReservationRow>(transaction.at(-1))[0];
+    } catch (error) {
+      await releaseBlobUsage(sql, usageReservation).catch(() => undefined);
+      throw error;
+    }
     if (!reservation) {
+      await releaseBlobUsage(sql, usageReservation).catch(() => undefined);
       const stats = await readRoomStorageStats(sql, self.roomId);
       if (stats.files.count >= MAX_ROOM_FILES) {
         throw new RoomHttpError(`Esta Mesa chegou a ${MAX_ROOM_FILES} arquivos. Exclua um arquivo antes de enviar outro.`, 409);
@@ -934,12 +1033,12 @@ export async function completeRoomFileUpload(
   if (blob.pathname !== payload.pathname) throw new Error("Uploaded pathname does not match its token.");
 
   const sql = await getRoomDb();
+  await reserveBlobUsage(sql, { simpleOps: 1 }, { eventId: `head:${payload.requestId}`, maintenance: true });
   const metadata = await head(blob.pathname);
   if (metadata.pathname !== payload.pathname || metadata.size !== payload.size) {
-    await del(blob.pathname).catch(async () => {
-      await queueBlobCleanup(sql, payload.pathname, roomCodeFromPathname(payload.pathname), metadata.size).catch(() => undefined);
-    });
+    await queueBlobCleanup(sql, payload.pathname, roomCodeFromPathname(payload.pathname), metadata.size);
     await sql`DELETE FROM upload_reservations WHERE request_id = ${payload.requestId}`.catch(() => undefined);
+    await drainBlobCleanupQueue(sql, 1, roomCodeFromPathname(payload.pathname));
     throw new Error("Uploaded Blob metadata does not match its reserved size.");
   }
   const previous = await getEntryByRequest(sql, payload.roomId, payload.actorId, payload.requestId);
@@ -956,8 +1055,9 @@ export async function completeRoomFileUpload(
   `;
   const participant = rows<{ id: string; name: string }>(participantResult)[0];
   if (!participant) {
-    await del(blob.pathname).catch(() => undefined);
+    await queueBlobCleanup(sql, payload.pathname, roomCodeFromPathname(payload.pathname), metadata.size);
     await sql`DELETE FROM upload_reservations WHERE request_id = ${payload.requestId}`;
+    await drainBlobCleanupQueue(sql, 1, roomCodeFromPathname(payload.pathname));
     throw new Error("The participant can no longer publish to this room.");
   }
 
@@ -970,26 +1070,61 @@ export async function completeRoomFileUpload(
   };
 
   try {
+    await assertDatabaseWritable(sql);
     const transaction = await sql.transaction([
-      sql`SELECT pg_advisory_xact_lock(hashtext(${payload.roomId}))`,
+      sql`SELECT pg_advisory_xact_lock(hashtext(${GLOBAL_BLOB_STORAGE_LOCK}))`,
+      sql`DELETE FROM blob_cleanup_queue WHERE pathname = ${payload.pathname}`,
       sql`
         INSERT INTO entries
           (id, room_id, actor_id, request_id, type, body, data_json, file_size, blob_pathname, created_at)
-        VALUES (
+        SELECT
           ${payload.entryId}, ${payload.roomId}, ${payload.actorId}, ${payload.requestId}, 'file',
           ${payload.name}, ${JSON.stringify(storedData)}, ${payload.size}, ${blob.pathname}, ${payload.createdAt}
+        WHERE EXISTS (
+          SELECT 1 FROM participants
+          WHERE id = ${payload.actorId} AND room_id = ${payload.roomId} AND status = 'approved'
         )
+          AND (
+            SELECT COALESCE(SUM(file_size), 0) FROM entries
+            WHERE room_id = ${payload.roomId} AND type = 'file'
+          ) + (
+            SELECT COALESCE(SUM(size), 0) FROM upload_reservations
+            WHERE room_id = ${payload.roomId} AND request_id != ${payload.requestId}
+          ) + ${payload.size} <= ${ROOM_FILE_BUDGET_BYTES}
+          AND (
+            SELECT COUNT(*) FROM entries
+            WHERE room_id = ${payload.roomId} AND type = 'file'
+          ) + (
+            SELECT COUNT(*) FROM upload_reservations
+            WHERE room_id = ${payload.roomId} AND request_id != ${payload.requestId}
+          ) + 1 <= ${MAX_ROOM_FILES}
+          AND (
+            SELECT COALESCE(SUM(file_size), 0) FROM entries WHERE type = 'file'
+          ) + (
+            SELECT COALESCE(SUM(size), 0) FROM upload_reservations
+            WHERE request_id != ${payload.requestId}
+          ) + (
+            SELECT COALESCE(SUM(size), 0) FROM blob_cleanup_queue
+          ) + ${payload.size} <= ${PROJECT_BLOB_SAFE_BYTES}
+          AND (
+            SELECT COUNT(*) FROM entries WHERE type = 'file'
+          ) + (
+            SELECT COUNT(*) FROM upload_reservations
+            WHERE request_id != ${payload.requestId}
+          ) + (
+            SELECT COUNT(*) FROM blob_cleanup_queue
+          ) + 1 <= ${PROJECT_MAX_BLOB_FILES}
         ON CONFLICT (request_id) DO NOTHING
         RETURNING id
       `,
       sql`DELETE FROM upload_reservations WHERE request_id = ${payload.requestId}`,
       sql`UPDATE rooms SET updated_at = ${Date.now()} WHERE id = ${payload.roomId}`,
     ]);
-    const inserted = transaction[1];
+    const inserted = transaction[2];
     if (!rows<{ id: string }>(inserted).length) {
       const replay = await getEntryByRequest(sql, payload.roomId, payload.actorId, payload.requestId);
       if (replay) return replay;
-      throw new Error("File request conflicted.");
+      throw new RoomHttpError("Este arquivo ultrapassaria o espaço seguro atual. Ele não foi publicado.", 507);
     }
   } catch (error) {
     const replay = await getEntryByRequest(sql, payload.roomId, payload.actorId, payload.requestId).catch(() => null);
@@ -997,10 +1132,10 @@ export async function completeRoomFileUpload(
       await sql`DELETE FROM upload_reservations WHERE request_id = ${payload.requestId}`.catch(() => undefined);
       return replay;
     }
-    await queueBlobCleanup(sql, payload.pathname, roomCodeFromPathname(payload.pathname), payload.size).catch(() => undefined);
-    await drainBlobCleanupQueue(sql, 1).catch(async () => {
-      await del(payload.pathname).catch(() => undefined);
-    });
+    const cleanupRoomCode = roomCodeFromPathname(payload.pathname);
+    await queueBlobCleanup(sql, payload.pathname, cleanupRoomCode, payload.size).catch(() => undefined);
+    await sql`DELETE FROM upload_reservations WHERE request_id = ${payload.requestId}`.catch(() => undefined);
+    await drainBlobCleanupQueue(sql, 1, cleanupRoomCode).catch(() => undefined);
     console.error("room-file-failed", error);
     throw error;
   }
@@ -1045,6 +1180,8 @@ export async function readRoomFile(request: Request, roomCode: string, entryId: 
   const location = data.blobUrl || data.pathname;
   if (!location) throw new RoomHttpError("Este arquivo não pode ser aberto.", 500);
 
+  const expectedBytes = Math.max(0, Number(data.size) || 0);
+  await reserveBlobUsage(sql, { simpleOps: 1, transferBytes: expectedBytes });
   const object = await get(location, { access: "private" });
   if (!object || object.statusCode !== 200) {
     throw new RoomHttpError("Arquivo não encontrado nesta Mesa.", 404);
@@ -1084,7 +1221,7 @@ export async function deleteRoomFile(request: Request, roomCode: string, entryId
     }
   }
   const fileSize = Number(file.fileSize) || 0;
-  const queries = [sql`SELECT pg_advisory_xact_lock(hashtext(${self.roomId}))`];
+  const queries = [sql`SELECT pg_advisory_xact_lock(hashtext(${GLOBAL_BLOB_STORAGE_LOCK}))`];
   if (pathname) {
     queries.push(sql`
       INSERT INTO blob_cleanup_queue (pathname, room_code, size, created_at, attempts, last_error)
@@ -1137,14 +1274,16 @@ export async function deleteRoom(request: Request, roomCode: string) {
   const fileCount = Number(rows<{ count: number | string }>(countResult)[0]?.count ?? 0);
   const now = Date.now();
   await sql.transaction([
-    sql`SELECT pg_advisory_xact_lock(hashtext(${self.roomId}))`,
+    sql`SELECT pg_advisory_xact_lock(hashtext(${GLOBAL_BLOB_STORAGE_LOCK}))`,
     sql`
       INSERT INTO deleted_rooms (code, gm_participant_id, gm_token_hash, deleted_at)
       VALUES (${self.roomCode}, ${self.id}, ${tokenHash}, ${now})
       ON CONFLICT (code) DO UPDATE
       SET gm_participant_id = EXCLUDED.gm_participant_id,
           gm_token_hash = EXCLUDED.gm_token_hash,
-          deleted_at = EXCLUDED.deleted_at
+          deleted_at = EXCLUDED.deleted_at,
+          last_scan_at = 0,
+          scan_count = 0
     `,
     sql`
       INSERT INTO blob_cleanup_queue (pathname, room_code, size, created_at, attempts, last_error)
@@ -1175,6 +1314,7 @@ export async function cleanupRoomOrphanBlobs(request: Request, roomCode: string)
   const blobs: Array<{ pathname: string; uploadedAt: Date; size?: number }> = [];
   let cursor: string | undefined;
   for (let pageIndex = 0; pageIndex < 10; pageIndex += 1) {
+    await reserveBlobUsage(sql, { advancedOps: 1 }, { maintenance: true });
     const page = await list({ prefix: `rooms/${self.roomCode}/`, limit: 1000, cursor });
     blobs.push(...page.blobs.map((blob) => ({ pathname: blob.pathname, uploadedAt: blob.uploadedAt, size: blob.size })));
     if (!page.hasMore || !page.cursor) break;

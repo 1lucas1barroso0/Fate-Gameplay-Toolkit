@@ -479,7 +479,7 @@ test("keeps every room file durable, private to approved participants, and visib
   assert.match(server, /type = 'file'/);
   assert.match(hook, /const postFile = React\.useCallback/);
   assert.match(hook, /import\("@vercel\/blob\/client"\)/);
-  assert.match(hook, /multipart: file\.size > 5 \* 1024 \* 1024/);
+  assert.match(hook, /multipart: false/);
   assert.match(hook, /const downloadFile = React\.useCallback/);
   assert.match(uploadRoute, /handleUpload/);
   assert.match(uploadRoute, /maximumSizeInBytes: MAX_ROOM_FILE_BYTES/);

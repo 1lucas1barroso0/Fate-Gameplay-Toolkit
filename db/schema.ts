@@ -61,6 +61,7 @@ export const entries = pgTable(
   (table) => [
     check("entries_type_check", sql`${table.type} IN ('roll', 'note', 'rule', 'file')`),
     index("entries_room_created_idx").on(table.roomId, table.createdAt),
+    index("entries_room_created_id_idx").on(table.roomId, table.createdAt, table.id),
     index("entries_room_type_idx").on(table.roomId, table.type),
     uniqueIndex("entries_request_id_unique").on(table.requestId),
   ],
@@ -96,7 +97,10 @@ export const blobCleanupQueue = pgTable(
     attempts: integer("attempts").notNull().default(0),
     lastError: text("last_error").notNull().default(""),
   },
-  (table) => [index("blob_cleanup_created_idx").on(table.createdAt)],
+  (table) => [
+    index("blob_cleanup_created_idx").on(table.createdAt),
+    index("blob_cleanup_attempt_idx").on(table.attempts, table.createdAt),
+  ],
 );
 
 export const deletedRooms = pgTable(

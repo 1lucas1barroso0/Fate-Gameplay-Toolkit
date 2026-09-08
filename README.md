@@ -24,6 +24,14 @@ Fate Condensado continua sendo a regra principal. Os demais livros são identifi
 
 As Fichas, preferências, rolagens pessoais e conjuntos personalizados permanecem no armazenamento do próprio dispositivo. Apenas os dados publicados em uma Mesa usam o backend compartilhado.
 
+## Armazenamento sustentável
+
+Imagens de Fichas ficam como Blobs deduplicados no IndexedDB; `localStorage`, backup e Undo guardam apenas referências. A área **Seu Fate → Armazenamento** mede o uso disponível, exporta dados e oferece limpezas específicas e confirmadas.
+
+Arquivos das Mesas têm limites preventivos por arquivo, Mesa e projeto. Exclusões removem também o Blob privado, uma fila durável recupera falhas e Mesas apagadas são revarridas para capturar uploads tardios. O Histórico permanece paginado e pode ser exportado ou limpo parcialmente pelo narrador.
+
+Todos os limites, margens, retenções e comportamentos de quota estão documentados em [STORAGE.md](STORAGE.md). A política usa somente as cotas gratuitas do Vercel Hobby e do Neon Free.
+
 ## Desenvolvimento local
 
 Requisitos: Node.js 22 e uma base Postgres compatível com Neon. Arquivos compartilhados também exigem um Vercel Blob privado.
@@ -52,7 +60,7 @@ npm test
 
 ## Publicação
 
-O projeto está preparado para integração Git da Vercel. Cada alteração enviada a uma branch gera uma prévia; a branch `main` publica a produção. No projeto da Vercel, conecte:
+O projeto está integrado à Vercel. Cada alteração enviada a uma branch gera uma prévia; a branch `main` publica a produção. No projeto da Vercel, mantenha conectados:
 
 1. uma base Neon que forneça `DATABASE_URL`;
 2. um Vercel Blob privado que forneça `BLOB_READ_WRITE_TOKEN`.
