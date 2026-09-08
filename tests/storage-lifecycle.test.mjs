@@ -222,6 +222,9 @@ test("serializes shared Blob capacity and repairs late uploads without unbounded
   assert.match(server, /request_id != \$\{payload\.requestId\}/);
   assert.match(server, /await drainBlobCleanupQueue/);
   assert.match(server, /rescanDeletedRoomBlobs/);
+  assert.match(server, /last_scan_at <= \$\{now\}::BIGINT - CASE scan_count/);
+  assert.match(server, /DELETED_ROOM_RESCAN_DELAYS_MS\[0\]\}::BIGINT/);
+  assert.match(server, /LIMIT \$\{limit\}::INTEGER/);
   assert.match(server, /ORDER BY attempts ASC, created_at ASC/);
   assert.match(server, /DELETE FROM blob_usage_ledger WHERE created_at/);
   assert.match(policy, /BLOB_USAGE_WINDOW_MS = 30 \* 24 \* 60 \* 60 \* 1000/);

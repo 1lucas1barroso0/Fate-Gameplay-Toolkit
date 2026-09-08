@@ -849,20 +849,20 @@ async function rescanDeletedRoomBlobs(sql: RoomSql, limit = 1) {
   const candidates = await sql`
     SELECT code, last_scan_at AS "lastScanAt", scan_count AS "scanCount"
     FROM deleted_rooms
-    WHERE scan_count < ${DELETED_ROOM_RESCAN_LIMIT}
+    WHERE scan_count < ${DELETED_ROOM_RESCAN_LIMIT}::INTEGER
       AND (
-        last_scan_at = 0 OR last_scan_at <= ${now} - CASE scan_count
-          WHEN 0 THEN ${DELETED_ROOM_RESCAN_DELAYS_MS[0]}
-          WHEN 1 THEN ${DELETED_ROOM_RESCAN_DELAYS_MS[1]}
-          WHEN 2 THEN ${DELETED_ROOM_RESCAN_DELAYS_MS[2]}
-          WHEN 3 THEN ${DELETED_ROOM_RESCAN_DELAYS_MS[3]}
-          WHEN 4 THEN ${DELETED_ROOM_RESCAN_DELAYS_MS[4]}
-          WHEN 5 THEN ${DELETED_ROOM_RESCAN_DELAYS_MS[5]}
-          ELSE ${DELETED_ROOM_RESCAN_DELAYS_MS[6]}
+        last_scan_at = 0 OR last_scan_at <= ${now}::BIGINT - CASE scan_count
+          WHEN 0 THEN ${DELETED_ROOM_RESCAN_DELAYS_MS[0]}::BIGINT
+          WHEN 1 THEN ${DELETED_ROOM_RESCAN_DELAYS_MS[1]}::BIGINT
+          WHEN 2 THEN ${DELETED_ROOM_RESCAN_DELAYS_MS[2]}::BIGINT
+          WHEN 3 THEN ${DELETED_ROOM_RESCAN_DELAYS_MS[3]}::BIGINT
+          WHEN 4 THEN ${DELETED_ROOM_RESCAN_DELAYS_MS[4]}::BIGINT
+          WHEN 5 THEN ${DELETED_ROOM_RESCAN_DELAYS_MS[5]}::BIGINT
+          ELSE ${DELETED_ROOM_RESCAN_DELAYS_MS[6]}::BIGINT
         END
       )
     ORDER BY last_scan_at ASC, deleted_at ASC
-    LIMIT ${limit}
+    LIMIT ${limit}::INTEGER
   `;
   let scanned = 0;
   for (const candidate of rows<{ code: string; lastScanAt: number | string; scanCount: number | string }>(candidates)) {
