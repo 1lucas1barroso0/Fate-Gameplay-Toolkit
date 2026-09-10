@@ -1874,3 +1874,197 @@ select,
   .storage-cleanup-item { grid-template-columns: auto minmax(0, 1fr); }
   .storage-cleanup-item > button { grid-column: 2; grid-row: auto; justify-self: stretch; width: 100%; }
 }
+
+/* Leitor editorial: limpa resíduos dos EPUBs e transforma listas, definições
+   e tabelas em estruturas de leitura — sem imitar a paginação do livro. */
+.rule-prose {
+  color: color-mix(in srgb, var(--foreground) 94%, var(--muted-foreground));
+  text-wrap: pretty;
+}
+
+.rule-prose > :first-child { margin-top: 0; }
+.rule-prose > :last-child { margin-bottom: 0; }
+
+.rule-prose h2 {
+  width: min(100%, 30ch);
+  margin-top: 3.4rem;
+  padding-top: 1.35rem;
+  border-top: 1px solid color-mix(in srgb, var(--cyan-deep) 32%, var(--line));
+}
+
+.rule-prose h2:first-child,
+.rule-prose .rule-chapter-deck + h2 { margin-top: 0; padding-top: 0; border-top: 0; }
+
+.rule-prose h3 { margin-top: 2.5rem; }
+.rule-prose h4 { margin-top: 2rem; }
+.rule-prose h2 + h3,
+.rule-prose h3 + h4 { margin-top: 1rem; }
+
+.rule-prose p + p { margin-top: 1.08rem; }
+.rule-prose h2 + p,
+.rule-prose h3 + p,
+.rule-prose h4 + p { margin-top: 0.7rem; }
+
+.rule-prose .rule-chapter-deck {
+  width: min(100%, 58ch);
+  margin: 0 0 2rem;
+  color: var(--cyan-deep);
+  font-family: var(--display);
+  font-size: clamp(1.02rem, 1.8vw, 1.28rem);
+  font-weight: 760;
+  letter-spacing: -0.015em;
+  line-height: 1.35;
+}
+
+.rule-prose hr { display: none; }
+.rule-prose div:not([class]) { width: min(100%, 72ch); margin: 0.7rem 0; }
+
+.rule-prose a {
+  text-underline-offset: 0.17em;
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+
+.rule-prose a:hover { color: var(--foreground); }
+.rule-prose .rule-url {
+  display: inline-block;
+  max-width: 100%;
+  white-space: nowrap;
+}
+
+.rule-nowrap { white-space: nowrap; }
+
+.rule-prose .rule-index-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 10.5rem), 1fr));
+  gap: 0.5rem;
+  width: min(100%, 72ch);
+  margin: 1rem 0 1.8rem;
+  padding: 0;
+  list-style: none;
+}
+
+.rule-prose .rule-index-list li {
+  display: flex;
+  align-items: center;
+  min-height: 42px;
+  margin: 0;
+  padding: 0.58rem 0.72rem;
+  border: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
+  border-radius: 0.58rem;
+  background: color-mix(in srgb, var(--muted) 58%, var(--card));
+  color: var(--foreground);
+  font-family: var(--body);
+  font-size: 0.8rem;
+  font-weight: 760;
+  line-height: 1.25;
+}
+
+.rule-prose .rule-definition-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+  width: min(100%, 72ch);
+  margin: 1.1rem 0 2rem;
+}
+
+.rule-prose .rule-definition-grid .rule-definition {
+  min-width: 0;
+  margin: 0;
+  padding: 0.82rem 0.9rem;
+  border: 1px solid color-mix(in srgb, var(--line) 76%, transparent);
+  border-radius: 0.68rem;
+  background: color-mix(in srgb, var(--muted) 45%, var(--card));
+  font-size: 0.94em;
+  line-height: 1.62;
+}
+
+.rule-prose .rule-definition-grid .rule-definition strong:first-child {
+  display: block;
+  margin-bottom: 0.22rem;
+  color: var(--cyan-deep);
+  font-family: var(--body);
+  font-size: 0.78rem;
+  letter-spacing: 0.015em;
+}
+
+.rule-prose .rule-table-scroll {
+  width: fit-content;
+  max-width: 100%;
+  margin: 1.35rem 0;
+  overflow-x: auto;
+  border: 1px solid color-mix(in srgb, var(--line) 84%, transparent);
+  border-radius: 0.72rem;
+  background: var(--card);
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--background) 28%, transparent);
+  scrollbar-gutter: stable;
+  -webkit-overflow-scrolling: touch;
+}
+
+.rule-prose .rule-table-scroll table {
+  display: table;
+  width: auto;
+  max-width: none;
+  margin: 0;
+  overflow: visible;
+  border: 0;
+  border-collapse: collapse;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.rule-prose .rule-table-scroll th,
+.rule-prose .rule-table-scroll td {
+  min-width: 0;
+  padding: 0.68rem 0.8rem;
+}
+
+.rule-prose .rule-table-scroll th:first-child,
+.rule-prose .rule-table-scroll td:first-child { padding-left: 0.9rem; }
+.rule-prose .rule-table-scroll th:last-child,
+.rule-prose .rule-table-scroll td:last-child { padding-right: 0.9rem; }
+.rule-prose .rule-table-scroll tr:last-child td { border-bottom: 0; }
+.rule-prose .rule-table-scroll tr > :first-child { border-left: 0; }
+.rule-prose .rule-table-scroll tr > :last-child { border-right: 0; }
+.rule-prose .rule-table-scroll thead:first-child tr:first-child th { border-top: 0; }
+
+.rule-prose .rule-table-cluster {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+  width: min(100%, 72ch);
+  margin: 1.35rem 0;
+}
+
+.rule-prose .rule-table-cluster .rule-table-scroll { width: 100%; margin: 0; }
+.rule-prose .rule-table-cluster table { width: 100%; }
+
+.rule-skill-slots {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.24rem;
+  min-height: 1rem;
+  white-space: nowrap;
+}
+
+.rule-skill-slots i {
+  display: block;
+  width: 0.64rem;
+  height: 0.64rem;
+  border: 1px solid color-mix(in srgb, var(--cyan-deep) 72%, var(--line));
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--cyan) 44%, var(--card));
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--card) 68%, transparent);
+}
+
+.rule-prose blockquote > .rule-table-scroll:last-child,
+.rule-prose aside > .rule-table-scroll:last-child { margin-bottom: 0.35rem; }
+
+@media (max-width: 700px) {
+  .rule-prose h2 { margin-top: 2.7rem; }
+  .rule-prose .rule-definition-grid,
+  .rule-prose .rule-table-cluster { grid-template-columns: 1fr; }
+  .rule-prose .rule-url { white-space: normal; overflow-wrap: anywhere; }
+  .rule-prose .rule-table-scroll { width: 100%; }
+}

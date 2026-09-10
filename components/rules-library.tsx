@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/sheet";
 import { ADJECTIVE_LADDER, stripHtml, type Language } from "@/lib/fate";
 import { MAX_ROOM_FILES_PER_UPLOAD, type RoomEntry, type RoomFileData } from "@/lib/room-contracts";
+import { prepareRuleHtml } from "@/lib/rule-content";
 import { getContextRules, type TableConfig } from "@/lib/table-config";
 import { formatStorageBytes } from "@/lib/storage-policy";
 import type { RoomStore } from "@/lib/use-room";
@@ -590,7 +591,10 @@ export function RulesLibrary({
 
   const currentSource = sources.find((source) => source.id === sourceId) ?? sources[0];
   const current = currentSource.chapters.find((chapter) => chapter.id === chapterId) ?? currentSource.chapters[0];
-  const currentHtml = current.html[language];
+  const currentHtml = React.useMemo(
+    () => prepareRuleHtml(current.html[language], language),
+    [current, language],
+  );
 
   const searchDocuments = React.useMemo(
     () => sources.flatMap((source) => source.chapters.map((chapter) => {

@@ -164,6 +164,7 @@ function cleanSourceHtml(sourceId, html) {
     .replace(/<script\b[\s\S]*?<\/script>/gi, "")
     .replace(/<style\b[\s\S]*?<\/style>/gi, "")
     .replace(/<head\b[\s\S]*?<\/head>/gi, "")
+    .replace(/<div\b[^>]*>\s*<h1\b[^>]*>\s*404:\s*Page not found\s*<\/h1>[\s\S]*?<\/div>/gi, "")
     .replace(/\[Insert your character sheet graphic here\]/gi, "<p>Character sheet diagram: see the official book layout.</p>")
     .replace(/\[Your character sheet image here\]/gi, "<p>Character sheet diagram: see the official book layout.</p>")
     .replace(/&nbsp;|&#160;/gi, " ")

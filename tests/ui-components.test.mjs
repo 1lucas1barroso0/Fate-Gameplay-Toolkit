@@ -219,12 +219,40 @@ test("keeps responsive reflow and accessibility safeguards in the Fate shell", a
   assert.match(css, /field-sizing:\s*content/);
   assert.match(css, /\.rule-prose th \{[^}]*white-space:\s*nowrap/);
   assert.match(css, /\.storage-cleanup-grid \{ display: grid/);
+  assert.match(css, /\.rule-prose \.rule-index-list/);
+  assert.match(css, /\.rule-prose \.rule-definition-grid/);
+  assert.match(css, /\.rule-prose \.rule-table-scroll/);
+  assert.match(css, /\.rule-skill-slots/);
   assert.match(storage, /O que é seguro limpar/);
   assert.match(storage, /Sem apagar seu jogo/);
   assert.match(storage, /Dados das Mesas/);
   assert.doesNotMatch(image, /para leitores de tela/);
   assert.match(image, /<span>Descrição da imagem<\/span>/);
   assert.match(app, /<span>Mesas<\/span>/);
+});
+
+test("cleans imported rule markup and preserves readable structures", async () => {
+  const { prepareRuleHtml } = await loadModule("/lib/rule-content.ts");
+  const html = prepareRuleHtml([
+    "<hr><p><br></p>",
+    "<h4>Lista de Perícias</h4><ul>",
+    ...Array.from({ length: 8 }, (_, index) => `<li>Perícia ${index + 1}</li>`),
+    "</ul>",
+    "<p><strong>Atirar:</strong> Combate à distância.</p>",
+    "<p><strong>Lutar:</strong> Combate corpo a corpo.</p>",
+    "<p><strong>Vigor:</strong> Potência física.</p>",
+    "<table><tbody><tr><td>A Pirâmide</td><td><code>000</code></td></tr></tbody></table>",
+    '<p>Licença em <a href="http://www.faterpg.com/licensing">http://www.faterpg.com/licensing</a>.</p>',
+  ].join(""), "pt");
+
+  assert.doesNotMatch(html, /<hr|<br/);
+  assert.match(html, /class="rule-index-list"/);
+  assert.match(html, /class="rule-definition-grid"/);
+  assert.doesNotMatch(html, /rule-definition-grid[^]*<h4>/);
+  assert.match(html, /class="rule-table-scroll"/);
+  assert.match(html, /class="rule-skill-slots"/);
+  assert.match(html, />faterpg\.com\/licensing</);
+  assert.doesNotMatch(html, />http:\/\//);
 });
 
 test("starts new configurations with every optional official rule disabled", async () => {
