@@ -15,6 +15,8 @@ A versão em português é baseada no Fate Condensado traduzido pela comunidade 
 Os textos abertos em inglês são derivados dos SRDs oficiais da Evil Hat sob Creative Commons Attribution 3.0 Unported. As traduções abertas em português mantêm as atribuições exibidas na Central de Regras.
 
 - [Fate Core SRD](https://fate-srd.com/fate-core)
+- [Fate Accelerated SRD](https://fate-srd.com/fate-accelerated)
+- [Fate Acelerado — Fate SRD Brasil](https://fatesrdbrasil.gitlab.io/fate-srd-brasil/fate-acelerado/)
 - [Fate System Toolkit SRD](https://fate-srd.com/fate-system-toolkit)
 
 ## Guias, Toolkits e jogos de cenário
