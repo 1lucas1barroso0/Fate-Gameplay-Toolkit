@@ -196,6 +196,11 @@ test("keeps responsive reflow and accessibility safeguards in the Fate shell", a
 
   assert.match(css, /@container \(max-width: 560px\)/);
   assert.match(css, /@media \(max-width: 700px\)/);
+  assert.match(css, /@media \(max-width: 1120px\)/);
+  assert.match(css, /overflow-x:\s*clip/);
+  assert.match(css, /\[data-slot="tabs-content"\] \{ overflow-x: clip; \}/);
+  assert.match(css, /\[data-slot="button"\] \{[^}]*white-space: normal/);
+  assert.match(css, /\.rule-prose iframe/);
   assert.match(css, /grid-template-columns:\s*repeat\(auto-fit,\s*minmax\(/);
   assert.match(css, /\.main-nav \[data-slot="tabs-list"\] \{ display: grid; grid-template-columns: repeat\(5, minmax\(0, 1fr\)\)/);
   assert.match(css, /\.accent-picker-grid \{ display: grid; grid-template-columns: repeat\(6, minmax\(72px, 1fr\)\)/);
