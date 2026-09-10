@@ -31,7 +31,7 @@ test("mantém o Condensado fora das expansões e identifica cada fonte sem ambig
   assert.equal(data.version, "2026-09-10");
   assert.deepEqual(
     data.sources.map((item) => item.id),
-    ["fate-guide", "fate-core", "fate-accelerated", "fate-adversary-toolkit", "fate-system-toolkit", "venture-city", "fate-horror-toolkit", "fate-of-cthulhu", "fate-space-toolkit", "uprising", "tachyon-squadron", "wearing-the-cape"],
+    ["fate-guide", "fate-core", "fate-accelerated", "fate-adversary-toolkit", "fate-system-toolkit", "venture-city", "fate-horror-toolkit", "fate-of-cthulhu", "fate-space-toolkit", "uprising", "tachyon-squadron", "wearing-the-cape", "the-crisp-line", "secrets-of-cats", "grimoire", "fate-accessibility-toolkit", "knights-of-invasion"],
   );
   assert.doesNotMatch(JSON.stringify(data.sources.map((item) => item.id)), /condensed|condensado/i);
   assert.match(data.precedence.pt, /Fate Condensado é a regra principal/);
@@ -67,6 +67,22 @@ test("mantém o Condensado fora das expansões e identifica cada fonte sem ambig
   const wearingTheCape = source("wearing-the-cape");
   assert.deepEqual(wearingTheCape.tags.map((tag) => tag.pt), ["Licenciado", "Jogo autônomo", "Opcional"]);
   assert.equal(new Set(wearingTheCape.tags.map((tag) => tag.pt)).size, 3);
+
+  for (const id of ["the-crisp-line", "grimoire"]) {
+    const supplement = source(id);
+    assert.deepEqual(supplement.tags.map((tag) => tag.pt), ["Oficial", "Suplemento", "Opcional"]);
+    assert.equal(new Set(supplement.tags.map((tag) => tag.pt)).size, 3);
+  }
+
+  const accessibilityToolkit = source("fate-accessibility-toolkit");
+  assert.deepEqual(accessibilityToolkit.tags.map((tag) => tag.pt), ["Oficial", "Toolkit", "Opcional"]);
+  assert.equal(new Set(accessibilityToolkit.tags.map((tag) => tag.pt)).size, 3);
+
+  for (const id of ["secrets-of-cats", "knights-of-invasion"]) {
+    const standalone = source(id);
+    assert.deepEqual(standalone.tags.map((tag) => tag.pt), ["Oficial", "Jogo autônomo", "Opcional"]);
+    assert.equal(new Set(standalone.tags.map((tag) => tag.pt)).size, 3);
+  }
 });
 
 test("incorpora integralmente os SRDs oficiais atuais e o guia editorial", () => {
@@ -82,6 +98,11 @@ test("incorpora integralmente os SRDs oficiais atuais e o guia editorial", () =>
   const uprising = source("uprising");
   const tachyon = source("tachyon-squadron");
   const wearingTheCape = source("wearing-the-cape");
+  const crispLine = source("the-crisp-line");
+  const secretsOfCats = source("secrets-of-cats");
+  const grimoire = source("grimoire");
+  const accessibilityToolkit = source("fate-accessibility-toolkit");
+  const knightsOfInvasion = source("knights-of-invasion");
 
   assert.equal(guide.chapters.length, 7);
   assert.equal(core.chapters.length, 14);
@@ -104,6 +125,16 @@ test("incorpora integralmente os SRDs oficiais atuais e o guia editorial", () =>
   assert.equal(tachyon.chapters.filter((chapter) => chapter.mode === "book-map").length, 16);
   assert.equal(wearingTheCape.chapters.length, 17);
   assert.equal(wearingTheCape.chapters.filter((chapter) => chapter.mode === "book-map").length, 17);
+  assert.equal(crispLine.chapters.length, 7);
+  assert.equal(crispLine.chapters.filter((chapter) => chapter.mode === "book-map").length, 7);
+  assert.equal(secretsOfCats.chapters.length, 7);
+  assert.equal(secretsOfCats.chapters.filter((chapter) => chapter.mode === "book-map").length, 7);
+  assert.equal(grimoire.chapters.length, 6);
+  assert.equal(grimoire.chapters.filter((chapter) => chapter.mode === "book-map").length, 6);
+  assert.equal(accessibilityToolkit.chapters.length, 7);
+  assert.equal(accessibilityToolkit.chapters.filter((chapter) => chapter.mode === "book-map").length, 7);
+  assert.equal(knightsOfInvasion.chapters.length, 6);
+  assert.equal(knightsOfInvasion.chapters.filter((chapter) => chapter.mode === "book-map").length, 6);
 
   assert.ok(guide.wordCountByLanguage.pt >= 600, "A síntese em português do guia encolheu.");
   assert.ok(guide.wordCountByLanguage.en >= 600, "A síntese em inglês do guia encolheu.");
@@ -129,6 +160,16 @@ test("incorpora integralmente os SRDs oficiais atuais e o guia editorial", () =>
   assert.ok(tachyon.wordCountByLanguage.en >= 2_500, "A cobertura de Tachyon Squadron em inglês encolheu para " + tachyon.wordCountByLanguage.en + " palavras.");
   assert.ok(wearingTheCape.wordCountByLanguage.pt >= 3_000, "A cobertura de Wearing the Cape em português encolheu para " + wearingTheCape.wordCountByLanguage.pt + " palavras.");
   assert.ok(wearingTheCape.wordCountByLanguage.en >= 2_800, "A cobertura de Wearing the Cape em inglês encolheu para " + wearingTheCape.wordCountByLanguage.en + " palavras.");
+  assert.ok(crispLine.wordCountByLanguage.pt >= 1_500, "A cobertura de The Crisp Line em português encolheu para " + crispLine.wordCountByLanguage.pt + " palavras.");
+  assert.ok(crispLine.wordCountByLanguage.en >= 1_400, "A cobertura de The Crisp Line em inglês encolheu para " + crispLine.wordCountByLanguage.en + " palavras.");
+  assert.ok(secretsOfCats.wordCountByLanguage.pt >= 1_350, "A cobertura de The Secrets of Cats em português encolheu para " + secretsOfCats.wordCountByLanguage.pt + " palavras.");
+  assert.ok(secretsOfCats.wordCountByLanguage.en >= 1_250, "A cobertura de The Secrets of Cats em inglês encolheu para " + secretsOfCats.wordCountByLanguage.en + " palavras.");
+  assert.ok(grimoire.wordCountByLanguage.pt >= 1_150, "A cobertura de Grimoire em português encolheu para " + grimoire.wordCountByLanguage.pt + " palavras.");
+  assert.ok(grimoire.wordCountByLanguage.en >= 1_050, "A cobertura de Grimoire em inglês encolheu para " + grimoire.wordCountByLanguage.en + " palavras.");
+  assert.ok(accessibilityToolkit.wordCountByLanguage.pt >= 1_450, "A cobertura de Fate Accessibility Toolkit em português encolheu para " + accessibilityToolkit.wordCountByLanguage.pt + " palavras.");
+  assert.ok(accessibilityToolkit.wordCountByLanguage.en >= 1_350, "A cobertura de Fate Accessibility Toolkit em inglês encolheu para " + accessibilityToolkit.wordCountByLanguage.en + " palavras.");
+  assert.ok(knightsOfInvasion.wordCountByLanguage.pt >= 1_200, "A cobertura de Knights of Invasion em português encolheu para " + knightsOfInvasion.wordCountByLanguage.pt + " palavras.");
+  assert.ok(knightsOfInvasion.wordCountByLanguage.en >= 1_100, "A cobertura de Knights of Invasion em inglês encolheu para " + knightsOfInvasion.wordCountByLanguage.en + " palavras.");
 
   assert.equal(core.sourceRevision, "5ef6f2d0e9ce8ebe235c3da453ce91c00353a528");
   assert.equal(accelerated.sourceRevision, "pdf-sha256:bf74c0f5715a873b6091787a95902aedacf12585208f33e73f082d0237f1d823");
@@ -141,6 +182,11 @@ test("incorpora integralmente os SRDs oficiais atuais e o guia editorial", () =>
   assert.equal(uprising.sourceRevision, "pdf-sha256:2db0872cf71996939ccd6bdb23be60158ccc3659195a427d3f173ab8dfec67d1");
   assert.equal(tachyon.sourceRevision, "pdf-sha256:5e61a7b90728380f7e85ccf226dc4dc9936d8182f6b88d628e0b2ffd02feda7a");
   assert.equal(wearingTheCape.sourceRevision, "pdf-sha256:3a1d6ab2c58e69e0c64dc037bab196ef345c264347b3917ee058ff4f031c7b59");
+  assert.equal(crispLine.sourceRevision, "pdf-sha256:9d18013fcc378a0a3ab72d1c23f74c0c2715a85d22e263bf8e0f22de7415e4d8");
+  assert.equal(secretsOfCats.sourceRevision, "pdf-sha256:83e4bfcd793bdbdfd675a52697957d0384d50635368a78fb827879d9806b9d76");
+  assert.equal(grimoire.sourceRevision, "pdf-sha256:e0d8c08027a35cf36cf953c937d3a08b8ee6881a9c9717c93e2813d62d94832e");
+  assert.equal(accessibilityToolkit.sourceRevision, "pdf-sha256:56eab2e9f77ee3ad3b05b11fe855b277cb6b008672f6ecfbd28fb26b39aa0f0d");
+  assert.equal(knightsOfInvasion.sourceRevision, "pdf-sha256:589a1e35570910632afa39ee839185b25c75b88143c01b9153003d1a0fab71ff");
 
   const adversaryText = sourceText(adversary, "pt");
   for (const topic of [
@@ -340,6 +386,115 @@ test("incorpora integralmente os SRDs oficiais atuais e o guia editorial", () =>
   ]) {
     assert.match(acceleratedText, new RegExp(topic, "iu"), "Fate Acelerado deixou de cobrir " + topic + ".");
   }
+
+  const crispLineText = sourceText(crispLine, "pt");
+  for (const topic of [
+    "The Crisp Line",
+    "transumanismo",
+    "genoísmo",
+    "Perries",
+    "chips",
+    "Icarids",
+    "pacote de aprimoramento genético",
+    "Axolotl",
+    "Cheetah",
+    "Eagle",
+    "Gorilla",
+    "Octopus",
+    "Snake",
+    "Wolf",
+    "mutação",
+    "reboot genético",
+    "City on the Brink",
+    "Gaia Protection Front",
+  ]) {
+    assert.match(crispLineText, new RegExp(topic, "iu"), "The Crisp Line deixou de cobrir " + topic + ".");
+  }
+
+  const catsText = sourceText(secretsOfCats, "pt");
+  for (const topic of [
+    "The Secrets of Cats",
+    "Fardos",
+    "Parlamento dos Gatos",
+    "Nomes Verdadeiros",
+    "Warding",
+    "Naming",
+    "Shaping",
+    "Seeking",
+    "Territory",
+    "Silver Ford",
+    "Black Silver",
+    "Fantasma Ardente",
+    "Rei dos Ratos",
+  ]) {
+    assert.match(catsText, new RegExp(topic, "iu"), "The Secrets of Cats deixou de cobrir " + topic + ".");
+  }
+
+  const grimoireText = sourceText(grimoire, "pt");
+  for (const topic of [
+    "Grimoire",
+    "Ganseldom",
+    "bruxo",
+    "daemon",
+    "grimórios",
+    "Bargain aspects",
+    "Favors Owed",
+    "Leverage",
+    "Glamours",
+    "Igreja de Myros",
+    "House Volio",
+    "The Rise of House Volio",
+  ]) {
+    assert.match(grimoireText, new RegExp(topic, "iu"), "Grimoire deixou de cobrir " + topic + ".");
+  }
+
+  const accessibilityText = sourceText(accessibilityToolkit, "pt");
+  for (const topic of [
+    "Fate Accessibility Toolkit",
+    "Cartão X",
+    "Script Change",
+    "deficiência",
+    "aspectos",
+    "cegueira",
+    "surdez",
+    "mobilidade",
+    "nanismo",
+    "doença crônica",
+    "autismo",
+    "depressão",
+    "ansiedade",
+    "esquizofrenia",
+    "bipolaridade",
+    "TEPT",
+    "Exhausted",
+    "Without My Device",
+    "dispositivos adaptativos",
+    "ASL",
+  ]) {
+    assert.match(accessibilityText, new RegExp(topic, "iu"), "Fate Accessibility Toolkit deixou de cobrir " + topic + ".");
+  }
+
+  const knightsText = sourceText(knightsOfInvasion, "pt");
+  for (const topic of [
+    "Knights of Invasion",
+    "Regen",
+    "Stroming",
+    "Aaldisle",
+    "Hunt",
+    "Ride",
+    "Siegecraft",
+    "torneio",
+    "armaduras",
+    "armas de cerco",
+    "Xenoforming",
+    "Conquista/Reivindicação",
+    "A Colheita",
+    "raça alienígena",
+    "Aaldfolk",
+    "tecnologia de ficção científica",
+  ]) {
+    assert.match(knightsText, new RegExp(topic, "iu"), "Knights of Invasion deixou de cobrir " + topic + ".");
+  }
 });
 
 test("aplica as erratas oficiais do Core ao texto incorporado", () => {
@@ -397,7 +552,7 @@ test("aplica a errata viva do System Toolkit ao texto incorporado", () => {
 
 test("usa um vocabulário canônico bilíngue e mantém variações apenas como aliases", () => {
   const ids = new Set(terminology.terms.map((term) => term.id));
-  for (const id of ["game-master", "player-character", "fate-point", "free-invoke", "skill", "stunt", "taken-out", "bronze-rule", "fate-condensed", "fate-core", "fate-accelerated", "approach", "careful", "clever", "flashy", "forceful", "quick", "sneaky", "ladder", "fate-die", "deck-of-fate", "milestone", "minor-milestone", "significant-milestone", "major-milestone", "mook", "fate-system-toolkit", "fate-adversary-toolkit", "venture-city", "fate-horror-toolkit", "fate-of-cthulhu", "fate-space-toolkit", "uprising", "tachyon-squadron", "dystopian-universe", "paris-nouveau", "la-resistance", "la-societe", "citoyen", "exile", "natural", "ex-cit", "playsheet", "means", "ends", "suited-means", "risky-means", "condition", "blowback", "cache", "bank", "budget", "prep-scene", "debrief", "advancement-point", "advancement-track", "secret-card", "accusation", "double-agent", "augmentation", "neural-casing", "augmented-reality", "virtual-reality", "le-treillis", "l-aerie", "la-cave", "gendarmes", "secspec", "transgression", "complication", "discovery", "resistance-goal", "government-goal", "corporate-sponsor", "ape", "kilo-joule", "elite", "french-terms", "tachyon-squadron", "draconis-volunteer-group", "stellar-republic", "dominion-of-unity", "fighter-pilot", "callsign", "decompression", "spacefaring-skill", "gunnery", "pilot", "tactics", "technology", "engagement", "detection-phase", "maneuver-phase", "action-phase", "end-of-round", "maneuver-chart", "flight", "swarm", "strike-element", "payload", "fighter-screen", "shield", "simple-damage", "damage-chart", "bug-out", "dice-maximization", "dice-minimization", "modular-equipment", "ace", "bandit", "bogey", "wingman", "victory", "chandrasekhar-drive", "jump-point", "draconis", "asami", "takahashi", "kalamos", "othonoi", "kripka-cluster", "blackfish", "gator", "goblin", "current-issue", "operational-objective", "campaign-arc", "superpower", "power-suite", "enhancement", "power-synergy", "power-theme", "special-effect", "drawback", "collateral-damage", "legacy-aspect", "trauma-aspect", "coping-condition", "doom-clock", "heroic-sacrifice", "failure-with-style", "x-card", "corruption", "corruption-clock", "corrupted-aspect", "corruption-stunt", "great-old-one", "timeline", "timeline-aspect", "timeline-catalyst", "timeline-track", "ripple", "paradox", "ritual", "spell", "eldritch-technology", "backlash", "plausibilometer", "black-box", "space-map", "astrogation", "bureaucracy", "command", "encounter", "planetary-survival", "psionics", "spacehand", "tech-level", "tool-class", "alien-ability", "spacecraft", "space-combat", "vector-diagram", "range-zone", "battlestation", "hyperspace", "warp-drive", "wormhole", "microgravity", "starport", "blackbelting", "mass-driver", "heat-sink", "galactic-citizen", "galactic-noble", "client-status", "outlaw-status", "psychic-alien", "wearing-the-cape", "breakthrough", "power-aspect", "hero-aspect", "background-aspect", "character-rating", "attribute", "resource-rating", "hero-die", "opposition-die", "passive-opposition", "active-opposition", "react-action", "power-class", "power-class-advantage", "starting-fate-point", "attribute-bonus", "power-skill", "weapon-rating", "armor-rating", "game-master-fate-pool", "threat-level", "scene-concede", "action-lens", "negotiation", "resource-stress", "resource-conflict", "scene-extra", "supporting-character", "main-character", "organization", "superheroic-realism", "column-rule", "world-advancement", "cape-file"]) {
+  for (const id of ["game-master", "player-character", "fate-point", "free-invoke", "skill", "stunt", "taken-out", "bronze-rule", "fate-condensed", "fate-core", "fate-accelerated", "approach", "careful", "clever", "flashy", "forceful", "quick", "sneaky", "ladder", "fate-die", "deck-of-fate", "milestone", "minor-milestone", "significant-milestone", "major-milestone", "mook", "fate-system-toolkit", "fate-adversary-toolkit", "venture-city", "fate-horror-toolkit", "fate-of-cthulhu", "fate-space-toolkit", "uprising", "tachyon-squadron", "dystopian-universe", "paris-nouveau", "la-resistance", "la-societe", "citoyen", "exile", "natural", "ex-cit", "playsheet", "means", "ends", "suited-means", "risky-means", "condition", "blowback", "cache", "bank", "budget", "prep-scene", "debrief", "advancement-point", "advancement-track", "secret-card", "accusation", "double-agent", "augmentation", "neural-casing", "augmented-reality", "virtual-reality", "le-treillis", "l-aerie", "la-cave", "gendarmes", "secspec", "transgression", "complication", "discovery", "resistance-goal", "government-goal", "corporate-sponsor", "ape", "kilo-joule", "elite", "french-terms", "tachyon-squadron", "draconis-volunteer-group", "stellar-republic", "dominion-of-unity", "fighter-pilot", "callsign", "decompression", "spacefaring-skill", "gunnery", "pilot", "tactics", "technology", "engagement", "detection-phase", "maneuver-phase", "action-phase", "end-of-round", "maneuver-chart", "flight", "swarm", "strike-element", "payload", "fighter-screen", "shield", "simple-damage", "damage-chart", "bug-out", "dice-maximization", "dice-minimization", "modular-equipment", "ace", "bandit", "bogey", "wingman", "victory", "chandrasekhar-drive", "jump-point", "draconis", "asami", "takahashi", "kalamos", "othonoi", "kripka-cluster", "blackfish", "gator", "goblin", "current-issue", "operational-objective", "campaign-arc", "superpower", "power-suite", "enhancement", "power-synergy", "power-theme", "special-effect", "drawback", "collateral-damage", "legacy-aspect", "trauma-aspect", "coping-condition", "doom-clock", "heroic-sacrifice", "failure-with-style", "x-card", "corruption", "corruption-clock", "corrupted-aspect", "corruption-stunt", "great-old-one", "timeline", "timeline-aspect", "timeline-catalyst", "timeline-track", "ripple", "paradox", "ritual", "spell", "eldritch-technology", "backlash", "plausibilometer", "black-box", "space-map", "astrogation", "bureaucracy", "command", "encounter", "planetary-survival", "psionics", "spacehand", "tech-level", "tool-class", "alien-ability", "spacecraft", "space-combat", "vector-diagram", "range-zone", "battlestation", "hyperspace", "warp-drive", "wormhole", "microgravity", "starport", "blackbelting", "mass-driver", "heat-sink", "galactic-citizen", "galactic-noble", "client-status", "outlaw-status", "psychic-alien", "wearing-the-cape", "breakthrough", "power-aspect", "hero-aspect", "background-aspect", "character-rating", "attribute", "resource-rating", "hero-die", "opposition-die", "passive-opposition", "active-opposition", "react-action", "power-class", "power-class-advantage", "starting-fate-point", "attribute-bonus", "power-skill", "weapon-rating", "armor-rating", "game-master-fate-pool", "threat-level", "scene-concede", "action-lens", "negotiation", "resource-stress", "resource-conflict", "scene-extra", "supporting-character", "main-character", "organization", "superheroic-realism", "column-rule", "world-advancement", "cape-file", "the-crisp-line", "genetically-modified-person", "crisping", "perizygotic", "chip", "genoism", "icarid", "genetic-enhancement-package", "mutation", "genetic-reboot", "secrets-of-cats", "burden", "true-name", "parliament-of-cats", "feline-magic", "warding", "naming", "shaping", "seeking", "territory-skill", "grimoire", "warlock", "daemon", "bond-aspect", "bargain-aspect", "favors-owed", "leverage", "glamours", "house-volio", "fate-accessibility-toolkit", "disability", "accessibility", "identity-first-language", "person-first-language", "adaptive-device", "exhausted", "without-my-device", "meltdown", "medical-debt", "low-on-charge", "hacked-condition", "knights-of-invasion", "allegiance", "code-aspect", "hunt-skill", "ride-skill", "siegecraft", "siege-scale", "tournament", "alien-agenda", "xenoforming", "conquest-reclamation", "harvest-agenda", "alien-race", "alien-type", "alien-feature", "alien-technology", "aaldfolk"]) {
     assert.ok(ids.has(id), "O vocabulário perdeu " + id + ".");
   }
 
@@ -413,6 +568,10 @@ test("usa um vocabulário canônico bilíngue e mantém variações apenas como 
   assert.equal(byId["power-class"].canonical.pt, "Classe de Poder");
   assert.equal(byId.approach.canonical.pt, "Abordagem");
   assert.equal(byId["fate-accelerated"].canonical.en, "Fate Accelerated");
+  assert.equal(byId["the-crisp-line"].canonical.en, "The Crisp Line");
+  assert.equal(byId["secrets-of-cats"].canonical.pt, "The Secrets of Cats");
+  assert.equal(byId["fate-accessibility-toolkit"].canonical.en, "Fate Accessibility Toolkit");
+  assert.equal(byId["knights-of-invasion"].canonical.en, "Knights of Invasion");
 
   const allPortuguese = data.sources.map((item) => sourceText(item, "pt")).join(" ");
   assert.doesNotMatch(allPortuguese, /invocaç(?:ão|ões) grátis/iu);
