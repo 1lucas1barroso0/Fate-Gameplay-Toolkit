@@ -164,7 +164,7 @@ export function StorageSettings({
       </section>
 
       <section className="storage-action-section">
-        <header><div><p className="eyebrow">Vercel Blob e Neon</p><h3>Dados da Mesa no servidor</h3></div>{activeRoom && <span>{activeRoom.room.name}</span>}</header>
+        <header><div><p className="eyebrow">No servidor</p><h3>Dados das Mesas</h3></div>{activeRoom && <span>{activeRoom.room.name}</span>}</header>
         {!activeRoom ? <p>Abra uma Mesa para medir, exportar ou excluir os dados dela no servidor. Nada é carregado em segundo plano enquanto as Mesas estão fechadas.</p> : <>
           <div className="server-storage-summary"><b>{formatStorageBytes(activeRoom.storage.files.usedBytes)} usados de {formatStorageBytes(activeRoom.storage.files.limitBytes)} em arquivos</b><span>{activeRoom.storage.files.count} de {activeRoom.storage.files.maxCount} arquivos · {formatStorageBytes(activeRoom.storage.history.usedBytes)} em Histórico textual</span></div>
           <div className="storage-safe-actions"><Button type="button" variant="outline" onClick={() => void run(async () => { await roomStore.exportHistory(); toast.success("Histórico completo exportado."); })}><Download /> Exportar Histórico</Button>{activeRoom.self.role === "gm" && <OrphanCleanupDialog disabled={working} onCleanup={async () => { const result = await roomStore.cleanupOrphanFiles(); await refresh(); return result; }} />}</div>
@@ -175,10 +175,30 @@ export function StorageSettings({
         </>}
       </section>
 
-      <section className="storage-action-section compact">
-        <header><div><p className="eyebrow">Regenerável ou temporário</p><h3>Limpeza segura</h3></div></header>
-        <div className="storage-safe-actions"><Button type="button" variant="outline" disabled={working} onClick={() => void run(async () => { const count = await clearRegenerableCaches(); toast.success(count ? `${count} cache(s) regenerável(is) removido(s).` : "Não havia caches regeneráveis."); })}><Eraser /> Limpar caches</Button><Button type="button" variant="outline" disabled={working} onClick={() => void run(() => { const result = removeFateTemporaryData(); toast.success(result.removed ? `${result.removed} gravação(ões) temporária(s) já confirmada(s) removida(s).` : result.preserved ? "Uma recuperação pendente foi preservada porque ainda não há cópia confirmada igual." : "Não havia dados temporários redundantes."); })}><Eraser /> Limpar temporários confirmados</Button><Button type="button" variant="outline" disabled={working} onClick={() => void run(() => { const bytes = clearLocalRollHistory(); toast.success(bytes ? `Histórico local de dados limpo; cerca de ${formatStorageBytes(bytes)} liberados.` : "Não havia rolagens locais guardadas."); })}><Trash2 /> Limpar rolagens locais</Button></div>
-        <p>Caches voltam a ser criados quando necessários. Fichas, imagens, regras, credenciais de Mesas e dados do servidor são preservados por estas três ações.</p>
+      <section className="storage-action-section compact storage-cleanup-section">
+        <header>
+          <div><p className="eyebrow">Regenerável ou temporário</p><h3>O que é seguro limpar</h3></div>
+          <span className="storage-safety-badge"><ShieldCheck aria-hidden="true" /> Sem apagar seu jogo</span>
+        </header>
+        <p className="storage-cleanup-intro">São dados auxiliares: podem ser refeitos pela ferramenta ou já têm uma cópia confirmada. Estas ações não apagam suas Fichas, imagens, regras, credenciais de Mesas nem dados do servidor.</p>
+        <div className="storage-cleanup-grid">
+          <article className="storage-cleanup-item">
+            <span className="storage-cleanup-icon"><Eraser aria-hidden="true" /></span>
+            <div><b>Cache regenerável</b><small>Arquivos de apoio que o navegador cria novamente quando precisar.</small></div>
+            <Button type="button" variant="outline" disabled={working} onClick={() => void run(async () => { const count = await clearRegenerableCaches(); toast.success(count ? `${count} cache(s) regenerável(is) removido(s).` : "Não havia caches regeneráveis."); })}>Limpar cache</Button>
+          </article>
+          <article className="storage-cleanup-item">
+            <span className="storage-cleanup-icon"><Eraser aria-hidden="true" /></span>
+            <div><b>Temporários já confirmados</b><small>Cópias de segurança que já foram confirmadas; uma recuperação pendente fica protegida.</small></div>
+            <Button type="button" variant="outline" disabled={working} onClick={() => void run(() => { const result = removeFateTemporaryData(); toast.success(result.removed ? `${result.removed} gravação(ões) temporária(s) já confirmada(s) removida(s).` : result.preserved ? "Uma recuperação pendente foi preservada porque ainda não há cópia confirmada igual." : "Não havia dados temporários redundantes."); })}>Limpar temporários</Button>
+          </article>
+          <article className="storage-cleanup-item">
+            <span className="storage-cleanup-icon"><Trash2 aria-hidden="true" /></span>
+            <div><b>Rolagens deste navegador</b><small>Histórico local do botão Dados; não mexe no Histórico compartilhado de nenhuma Mesa.</small></div>
+            <Button type="button" variant="outline" disabled={working} onClick={() => void run(() => { const bytes = clearLocalRollHistory(); toast.success(bytes ? `Histórico local de dados limpo; cerca de ${formatStorageBytes(bytes)} liberados.` : "Não havia rolagens locais guardadas."); })}>Limpar rolagens</Button>
+          </article>
+        </div>
+        <p className="storage-cleanup-preserved"><ShieldCheck aria-hidden="true" /> Se quiser remover algo permanente, a própria tela sempre pede confirmação e informa exatamente o que será afetado.</p>
       </section>
     </div>
   );

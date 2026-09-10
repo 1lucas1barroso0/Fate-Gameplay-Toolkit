@@ -193,6 +193,7 @@ test("keeps responsive reflow and accessibility safeguards in the Fate shell", a
   const css = await readFile(path.join(root, "app", "globals.css"), "utf8");
   const app = await readFile(path.join(root, "components", "fate-app.tsx"), "utf8");
   const image = await readFile(path.join(root, "components", "sheet-image.tsx"), "utf8");
+  const storage = await readFile(path.join(root, "components", "storage-settings.tsx"), "utf8");
 
   assert.match(css, /@container \(max-width: 560px\)/);
   assert.match(css, /@media \(max-width: 700px\)/);
@@ -217,6 +218,10 @@ test("keeps responsive reflow and accessibility safeguards in the Fate shell", a
   assert.match(css, /forced-colors:\s*active/);
   assert.match(css, /field-sizing:\s*content/);
   assert.match(css, /\.rule-prose th \{[^}]*white-space:\s*nowrap/);
+  assert.match(css, /\.storage-cleanup-grid \{ display: grid/);
+  assert.match(storage, /O que é seguro limpar/);
+  assert.match(storage, /Sem apagar seu jogo/);
+  assert.match(storage, /Dados das Mesas/);
   assert.doesNotMatch(image, /para leitores de tela/);
   assert.match(image, /<span>Descrição da imagem<\/span>/);
   assert.match(app, /<span>Mesas<\/span>/);

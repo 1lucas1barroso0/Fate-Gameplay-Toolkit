@@ -1753,3 +1753,124 @@ select,
   .rule-prose { padding-inline: clamp(1rem, 5vw, 1.4rem); }
   .rule-prose table { font-size: 0.82rem; }
 }
+
+/* Seu Fate / armazenamento: cada ação explica seu alcance antes de oferecer
+   o botão, para que uma limpeza nunca pareça um comando técnico misterioso. */
+.storage-settings { gap: 1rem; }
+.storage-overview,
+.storage-action-section {
+  padding: clamp(1rem, 2vw, 1.25rem);
+  border-radius: 0.9rem;
+}
+.storage-overview { gap: 0.9rem; }
+.storage-overview-heading { gap: 0.8rem; }
+.storage-overview-heading > svg { width: 1.5rem; height: 1.5rem; }
+.storage-overview-heading > div > b { font-size: 0.88rem; letter-spacing: -0.01em; }
+.storage-overview-heading span { margin-top: 0.12rem; font-size: 0.72rem; }
+.storage-overview-heading strong { background: color-mix(in srgb, var(--accent) 62%, var(--card)); color: var(--foreground); }
+.storage-breakdown { gap: 0.6rem; }
+.storage-breakdown > div {
+  min-height: 76px;
+  padding: 0.75rem;
+  border-color: color-mix(in srgb, var(--line) 76%, transparent);
+  background: color-mix(in srgb, var(--muted) 74%, var(--card));
+  transition: border-color 140ms ease, background-color 140ms ease, transform 140ms ease;
+}
+.storage-breakdown > div:hover { border-color: var(--cyan-deep); background: color-mix(in srgb, var(--accent) 72%, var(--card)); transform: translateY(-1px); }
+.storage-breakdown span { font-size: 0.7rem; }
+.storage-breakdown small { margin-top: 0.12rem; font-size: 0.58rem; }
+.storage-breakdown b { margin-top: 0.25rem; color: var(--cyan-deep); font-size: 0.78rem; }
+.storage-action-section { gap: 0.85rem; }
+.storage-action-section > header { align-items: flex-start; }
+.storage-action-section h3 { font-family: var(--display); font-size: clamp(1.05rem, 1.8vw, 1.35rem); letter-spacing: -0.02em; }
+.storage-action-section > header > span:not(.storage-safety-badge) { padding-top: 0.18rem; }
+.storage-action-section > header > button { flex: 0 1 auto; }
+.storage-action-section > p { max-width: 78ch; }
+.storage-select-list > div {
+  padding: 0.68rem 0.75rem;
+  border-color: color-mix(in srgb, var(--line) 72%, transparent);
+  background: color-mix(in srgb, var(--muted) 55%, var(--card));
+}
+.storage-select-list > div:hover { border-color: color-mix(in srgb, var(--cyan-deep) 68%, var(--line)); background: color-mix(in srgb, var(--accent) 62%, var(--card)); }
+.storage-select-list b { font-size: 0.77rem; }
+.storage-select-list small { margin-top: 0.1rem; font-size: 0.64rem; }
+.storage-safe-actions { align-items: center; }
+.storage-safe-actions [data-slot="button"] { min-height: 38px; }
+.storage-cleanup-section {
+  position: relative;
+  overflow: hidden;
+  border-color: color-mix(in srgb, var(--cyan-deep) 42%, var(--line));
+  background: linear-gradient(145deg, color-mix(in srgb, var(--cyan) 9%, var(--card)), color-mix(in srgb, var(--muted) 88%, var(--card)));
+}
+.storage-cleanup-section::before {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 3px;
+  background: linear-gradient(90deg, var(--cyan), color-mix(in srgb, var(--cyan) 20%, transparent));
+  content: "";
+}
+.storage-safety-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.32rem;
+  min-height: 28px;
+  padding: 0.25rem 0.52rem;
+  border: 1px solid color-mix(in srgb, var(--cyan-deep) 48%, var(--line));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--card) 45%, transparent);
+  color: var(--cyan-deep);
+  font-size: 0.62rem;
+  font-weight: 850;
+  white-space: nowrap;
+}
+.storage-safety-badge svg { width: 0.9rem; height: 0.9rem; }
+.storage-cleanup-intro { max-width: 82ch; font-size: 0.74rem !important; line-height: 1.6 !important; }
+.storage-cleanup-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.6rem; }
+.storage-cleanup-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 0.62rem;
+  min-width: 0;
+  padding: 0.78rem;
+  border: 1px solid color-mix(in srgb, var(--line) 76%, transparent);
+  border-radius: 0.72rem;
+  background: color-mix(in srgb, var(--card) 72%, transparent);
+}
+.storage-cleanup-item > div { display: grid; gap: 0.18rem; min-width: 0; }
+.storage-cleanup-item b { font-size: 0.75rem; line-height: 1.25; }
+.storage-cleanup-item small { color: var(--muted-foreground); font-size: 0.65rem; line-height: 1.5; }
+.storage-cleanup-icon {
+  display: grid;
+  place-items: center;
+  width: 1.8rem;
+  height: 1.8rem;
+  border-radius: 0.55rem;
+  background: color-mix(in srgb, var(--cyan) 18%, var(--card));
+  color: var(--cyan-deep);
+}
+.storage-cleanup-icon svg { width: 0.95rem; height: 0.95rem; }
+.storage-cleanup-item > button { grid-column: 2; justify-self: start; margin-top: 0.28rem; }
+.storage-cleanup-preserved {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.42rem;
+  padding-top: 0.72rem;
+  border-top: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+  color: var(--muted-foreground) !important;
+  font-size: 0.68rem !important;
+}
+.storage-cleanup-preserved svg { width: 0.95rem; height: 0.95rem; flex: 0 0 auto; color: var(--cyan-deep); }
+
+@media (max-width: 840px) {
+  .storage-cleanup-grid { grid-template-columns: 1fr; }
+  .storage-cleanup-item { grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; }
+  .storage-cleanup-item > button { grid-column: 3; grid-row: 1; margin-top: 0; }
+}
+
+@media (max-width: 560px) {
+  .storage-action-section > header { align-items: stretch; flex-direction: column; }
+  .storage-safety-badge { width: fit-content; }
+  .storage-cleanup-item { grid-template-columns: auto minmax(0, 1fr); }
+  .storage-cleanup-item > button { grid-column: 2; grid-row: auto; justify-self: stretch; width: 100%; }
+}
