@@ -28,10 +28,10 @@ function sourceText(item, language = "en") {
 }
 
 test("mantém o Condensado fora das expansões e identifica cada fonte sem ambiguidade", () => {
-  assert.equal(data.version, "2026-09-01");
+  assert.equal(data.version, "2026-09-10");
   assert.deepEqual(
     data.sources.map((item) => item.id),
-    ["fate-guide", "fate-core", "fate-adversary-toolkit", "fate-system-toolkit", "venture-city", "fate-horror-toolkit", "fate-of-cthulhu", "fate-space-toolkit", "uprising", "tachyon-squadron"],
+    ["fate-guide", "fate-core", "fate-adversary-toolkit", "fate-system-toolkit", "venture-city", "fate-horror-toolkit", "fate-of-cthulhu", "fate-space-toolkit", "uprising", "tachyon-squadron", "wearing-the-cape"],
   );
   assert.doesNotMatch(JSON.stringify(data.sources.map((item) => item.id)), /condensed|condensado/i);
   assert.match(data.precedence.pt, /Fate Condensado é a regra principal/);
@@ -41,7 +41,7 @@ test("mantém o Condensado fora das expansões e identifica cada fonte sem ambig
   assert.match(data.precedence.en, /Fate Condensed prevails/);
 
   for (const item of data.sources) {
-    assert.ok(item.tags.some((tag) => tag.pt === "Oficial"), item.id + " perdeu a marca Oficial.");
+    assert.ok(item.tags.some((tag) => tag.pt === "Oficial" || tag.pt === "Licenciado"), item.id + " perdeu a origem editorial.");
     assert.ok(item.officialUrl.startsWith("https://"), item.id + " perdeu a fonte oficial.");
     assert.ok(item.referenceUrl.pt.startsWith("https://"), item.id + " perdeu a referência em português.");
     assert.ok(item.referenceUrl.en.startsWith("https://"), item.id + " perdeu a referência em inglês.");
@@ -63,6 +63,10 @@ test("mantém o Condensado fora das expansões e identifica cada fonte sem ambig
     assert.deepEqual(expansion.tags.map((tag) => tag.pt), ["Oficial", "Expansão", "Opcional"]);
     assert.equal(new Set(expansion.tags.map((tag) => tag.pt)).size, 3);
   }
+
+  const wearingTheCape = source("wearing-the-cape");
+  assert.deepEqual(wearingTheCape.tags.map((tag) => tag.pt), ["Licenciado", "Jogo autônomo", "Opcional"]);
+  assert.equal(new Set(wearingTheCape.tags.map((tag) => tag.pt)).size, 3);
 });
 
 test("incorpora integralmente os SRDs oficiais atuais e o guia editorial", () => {
@@ -76,6 +80,7 @@ test("incorpora integralmente os SRDs oficiais atuais e o guia editorial", () =>
   const space = source("fate-space-toolkit");
   const uprising = source("uprising");
   const tachyon = source("tachyon-squadron");
+  const wearingTheCape = source("wearing-the-cape");
 
   assert.equal(guide.chapters.length, 7);
   assert.equal(core.chapters.length, 14);
@@ -94,6 +99,8 @@ test("incorpora integralmente os SRDs oficiais atuais e o guia editorial", () =>
   assert.equal(uprising.chapters.filter((chapter) => chapter.mode === "book-map").length, 21);
   assert.equal(tachyon.chapters.length, 16);
   assert.equal(tachyon.chapters.filter((chapter) => chapter.mode === "book-map").length, 16);
+  assert.equal(wearingTheCape.chapters.length, 17);
+  assert.equal(wearingTheCape.chapters.filter((chapter) => chapter.mode === "book-map").length, 17);
 
   assert.ok(guide.wordCountByLanguage.pt >= 600, "A síntese em português do guia encolheu.");
   assert.ok(guide.wordCountByLanguage.en >= 600, "A síntese em inglês do guia encolheu.");
@@ -115,6 +122,8 @@ test("incorpora integralmente os SRDs oficiais atuais e o guia editorial", () =>
   assert.ok(uprising.wordCountByLanguage.en >= 3_600, "A cobertura de Uprising em inglês encolheu para " + uprising.wordCountByLanguage.en + " palavras.");
   assert.ok(tachyon.wordCountByLanguage.pt >= 2_700, "A cobertura de Tachyon Squadron em português encolheu para " + tachyon.wordCountByLanguage.pt + " palavras.");
   assert.ok(tachyon.wordCountByLanguage.en >= 2_500, "A cobertura de Tachyon Squadron em inglês encolheu para " + tachyon.wordCountByLanguage.en + " palavras.");
+  assert.ok(wearingTheCape.wordCountByLanguage.pt >= 3_000, "A cobertura de Wearing the Cape em português encolheu para " + wearingTheCape.wordCountByLanguage.pt + " palavras.");
+  assert.ok(wearingTheCape.wordCountByLanguage.en >= 2_800, "A cobertura de Wearing the Cape em inglês encolheu para " + wearingTheCape.wordCountByLanguage.en + " palavras.");
 
   assert.equal(core.sourceRevision, "5ef6f2d0e9ce8ebe235c3da453ce91c00353a528");
   assert.equal(adversary.sourceRevision, "e572e01df2cf6793f430cbbd3a40998087de9a20");
@@ -125,6 +134,7 @@ test("incorpora integralmente os SRDs oficiais atuais e o guia editorial", () =>
   assert.equal(space.sourceRevision, "pdf-sha256:e3c938304f50cb97b194e42c745965dc5b24e8a8de8f1e17db7a8902ed9f5a77");
   assert.equal(uprising.sourceRevision, "pdf-sha256:2db0872cf71996939ccd6bdb23be60158ccc3659195a427d3f173ab8dfec67d1");
   assert.equal(tachyon.sourceRevision, "pdf-sha256:5e61a7b90728380f7e85ccf226dc4dc9936d8182f6b88d628e0b2ffd02feda7a");
+  assert.equal(wearingTheCape.sourceRevision, "pdf-sha256:3a1d6ab2c58e69e0c64dc037bab196ef345c264347b3917ee058ff4f031c7b59");
 
   const adversaryText = sourceText(adversary, "pt");
   for (const topic of [
@@ -268,6 +278,30 @@ test("incorpora integralmente os SRDs oficiais atuais e o guia editorial", () =>
   ]) {
     assert.match(tachyonText, new RegExp(topic, "iu"), "Tachyon Squadron deixou de cobrir " + topic + ".");
   }
+
+  const wearingTheCapeText = sourceText(wearingTheCape, "pt");
+  for (const topic of [
+    "Wearing the Cape",
+    "Open Game License 1.0a",
+    "Identidade de Produto",
+    "Dados de Herói",
+    "Dados de Oposição",
+    "Reagir",
+    "Classe de Poder",
+    "Vantagem de Classe de Poder",
+    "Ajax",
+    "Verne",
+    "Reserva do Narrador",
+    "Concessão de Cena",
+    "negociação",
+    "Regra de Bronze",
+    "organizações",
+    "Regra da Coluna",
+    "Realismo Super-Heroico",
+    "Cape File",
+  ]) {
+    assert.match(wearingTheCapeText, new RegExp(topic, "iu"), "Wearing the Cape deixou de cobrir " + topic + ".");
+  }
 });
 
 test("aplica as erratas oficiais do Core ao texto incorporado", () => {
@@ -325,7 +359,7 @@ test("aplica a errata viva do System Toolkit ao texto incorporado", () => {
 
 test("usa um vocabulário canônico bilíngue e mantém variações apenas como aliases", () => {
   const ids = new Set(terminology.terms.map((term) => term.id));
-  for (const id of ["game-master", "player-character", "fate-point", "free-invoke", "skill", "stunt", "taken-out", "bronze-rule", "fate-condensed", "fate-core", "fate-system-toolkit", "fate-adversary-toolkit", "venture-city", "fate-horror-toolkit", "fate-of-cthulhu", "fate-space-toolkit", "uprising", "tachyon-squadron", "dystopian-universe", "paris-nouveau", "la-resistance", "la-societe", "citoyen", "exile", "natural", "ex-cit", "playsheet", "means", "ends", "suited-means", "risky-means", "condition", "blowback", "cache", "bank", "budget", "prep-scene", "debrief", "advancement-point", "advancement-track", "secret-card", "accusation", "double-agent", "augmentation", "neural-casing", "augmented-reality", "virtual-reality", "le-treillis", "l-aerie", "la-cave", "gendarmes", "secspec", "transgression", "complication", "discovery", "resistance-goal", "government-goal", "corporate-sponsor", "ape", "kilo-joule", "elite", "french-terms", "tachyon-squadron", "draconis-volunteer-group", "stellar-republic", "dominion-of-unity", "fighter-pilot", "callsign", "decompression", "spacefaring-skill", "gunnery", "pilot", "tactics", "technology", "engagement", "detection-phase", "maneuver-phase", "action-phase", "end-of-round", "maneuver-chart", "flight", "swarm", "strike-element", "payload", "fighter-screen", "shield", "simple-damage", "damage-chart", "bug-out", "dice-maximization", "dice-minimization", "modular-equipment", "ace", "bandit", "bogey", "wingman", "victory", "chandrasekhar-drive", "jump-point", "draconis", "asami", "takahashi", "kalamos", "othonoi", "kripka-cluster", "blackfish", "gator", "goblin", "current-issue", "operational-objective", "campaign-arc", "superpower", "power-suite", "enhancement", "power-synergy", "power-theme", "special-effect", "drawback", "collateral-damage", "legacy-aspect", "trauma-aspect", "coping-condition", "doom-clock", "heroic-sacrifice", "failure-with-style", "x-card", "corruption", "corruption-clock", "corrupted-aspect", "corruption-stunt", "great-old-one", "timeline", "timeline-aspect", "timeline-catalyst", "timeline-track", "ripple", "paradox", "ritual", "spell", "eldritch-technology", "backlash", "plausibilometer", "black-box", "space-map", "astrogation", "bureaucracy", "command", "encounter", "planetary-survival", "psionics", "spacehand", "tech-level", "tool-class", "alien-ability", "spacecraft", "space-combat", "vector-diagram", "range-zone", "battlestation", "hyperspace", "warp-drive", "wormhole", "microgravity", "starport", "blackbelting", "mass-driver", "heat-sink", "galactic-citizen", "galactic-noble", "client-status", "outlaw-status", "psychic-alien"]) {
+  for (const id of ["game-master", "player-character", "fate-point", "free-invoke", "skill", "stunt", "taken-out", "bronze-rule", "fate-condensed", "fate-core", "fate-system-toolkit", "fate-adversary-toolkit", "venture-city", "fate-horror-toolkit", "fate-of-cthulhu", "fate-space-toolkit", "uprising", "tachyon-squadron", "dystopian-universe", "paris-nouveau", "la-resistance", "la-societe", "citoyen", "exile", "natural", "ex-cit", "playsheet", "means", "ends", "suited-means", "risky-means", "condition", "blowback", "cache", "bank", "budget", "prep-scene", "debrief", "advancement-point", "advancement-track", "secret-card", "accusation", "double-agent", "augmentation", "neural-casing", "augmented-reality", "virtual-reality", "le-treillis", "l-aerie", "la-cave", "gendarmes", "secspec", "transgression", "complication", "discovery", "resistance-goal", "government-goal", "corporate-sponsor", "ape", "kilo-joule", "elite", "french-terms", "tachyon-squadron", "draconis-volunteer-group", "stellar-republic", "dominion-of-unity", "fighter-pilot", "callsign", "decompression", "spacefaring-skill", "gunnery", "pilot", "tactics", "technology", "engagement", "detection-phase", "maneuver-phase", "action-phase", "end-of-round", "maneuver-chart", "flight", "swarm", "strike-element", "payload", "fighter-screen", "shield", "simple-damage", "damage-chart", "bug-out", "dice-maximization", "dice-minimization", "modular-equipment", "ace", "bandit", "bogey", "wingman", "victory", "chandrasekhar-drive", "jump-point", "draconis", "asami", "takahashi", "kalamos", "othonoi", "kripka-cluster", "blackfish", "gator", "goblin", "current-issue", "operational-objective", "campaign-arc", "superpower", "power-suite", "enhancement", "power-synergy", "power-theme", "special-effect", "drawback", "collateral-damage", "legacy-aspect", "trauma-aspect", "coping-condition", "doom-clock", "heroic-sacrifice", "failure-with-style", "x-card", "corruption", "corruption-clock", "corrupted-aspect", "corruption-stunt", "great-old-one", "timeline", "timeline-aspect", "timeline-catalyst", "timeline-track", "ripple", "paradox", "ritual", "spell", "eldritch-technology", "backlash", "plausibilometer", "black-box", "space-map", "astrogation", "bureaucracy", "command", "encounter", "planetary-survival", "psionics", "spacehand", "tech-level", "tool-class", "alien-ability", "spacecraft", "space-combat", "vector-diagram", "range-zone", "battlestation", "hyperspace", "warp-drive", "wormhole", "microgravity", "starport", "blackbelting", "mass-driver", "heat-sink", "galactic-citizen", "galactic-noble", "client-status", "outlaw-status", "psychic-alien", "wearing-the-cape", "breakthrough", "power-aspect", "hero-aspect", "background-aspect", "character-rating", "attribute", "resource-rating", "hero-die", "opposition-die", "passive-opposition", "active-opposition", "react-action", "power-class", "power-class-advantage", "starting-fate-point", "attribute-bonus", "power-skill", "weapon-rating", "armor-rating", "game-master-fate-pool", "threat-level", "scene-concede", "action-lens", "negotiation", "resource-stress", "resource-conflict", "scene-extra", "supporting-character", "main-character", "organization", "superheroic-realism", "column-rule", "world-advancement", "cape-file"]) {
     assert.ok(ids.has(id), "O vocabulário perdeu " + id + ".");
   }
 
@@ -336,6 +370,9 @@ test("usa um vocabulário canônico bilíngue e mantém variações apenas como 
   assert.equal(byId["taken-out"].canonical.pt, "tirado de ação");
   assert.equal(byId["bronze-rule"].canonical.en, "Fate Fractal");
   assert.ok(byId["fate-core"].aliases.pt.includes("Fate Sistema Básico"));
+  assert.equal(byId["wearing-the-cape"].canonical.en, "Wearing the Cape: The Roleplaying Game");
+  assert.equal(byId["game-master-fate-pool"].canonical.pt, "Reserva de Destino do Narrador");
+  assert.equal(byId["power-class"].canonical.pt, "Classe de Poder");
 
   const allPortuguese = data.sources.map((item) => sourceText(item, "pt")).join(" ");
   assert.doesNotMatch(allPortuguese, /invocaç(?:ão|ões) grátis/iu);
