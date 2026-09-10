@@ -1,11 +1,14 @@
 "use client";
 
 import * as React from "react";
-import { BookOpen, ExternalLink, Search, Send, Settings2, Sparkles, X } from "lucide-react";
+import { BookOpen, Download, ExternalLink, FileText, FileUp, Loader2, LockKeyhole, Search, Send, Settings2, Sparkles, Trash2, X } from "lucide-react";
+import { toast } from "sonner";
 import rulesData from "@/content/rules.json";
 import expansionData from "@/content/expansions.json";
 import terminologyData from "@/content/fate-terminology.json";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import {
@@ -17,7 +20,10 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { ADJECTIVE_LADDER, stripHtml, type Language } from "@/lib/fate";
+import { MAX_ROOM_FILES_PER_UPLOAD, type RoomEntry, type RoomFileData } from "@/lib/room-contracts";
 import { getContextRules, type TableConfig } from "@/lib/table-config";
+import { formatStorageBytes } from "@/lib/storage-policy";
+import type { RoomStore } from "@/lib/use-room";
 
 type Localized = { pt: string; en: string };
 type LocalizedList = { pt: string[]; en: string[] };
@@ -314,18 +320,210 @@ function QuickReference({ language }: { language: Language }) {
   );
 }
 
+const privateLibraryCopy = {
+  pt: {
+    eyebrow: "Acesso restrito",
+    heading: "Biblioteca privada da Mesa",
+    description: "O Narrador pode guardar aqui os PDFs integrais que possui. Eles não entram no site público e só são entregues a participantes aprovados desta Mesa.",
+    openRooms: "Abrir Mesas",
+    noRoom: "Abra ou crie uma Mesa para usar a biblioteca privada.",
+    syncing: "Sincronizando a Mesa privada…",
+    pending: "A biblioteca aparecerá depois que o Narrador aprovar sua entrada.",
+    room: "Mesa",
+    privacy: "Acesso autenticado · participantes aprovados · sem indexação pública",
+    usage: (used: string, limit: string) => `${used} usados de ${limit}`,
+    fileLimit: (size: string, count: number) => `Até ${size} por PDF · ${count} arquivos por envio`,
+    warning: "O espaço está em atenção. Baixe uma cópia e exclua o que não precisar antes de outro envio grande.",
+    add: "Adicionar PDFs",
+    adding: "Enviando…",
+    gmOnly: "Somente o Narrador adiciona livros; participantes aprovados podem ler e baixar.",
+    empty: "O Narrador ainda não adicionou nenhum PDF integral a esta Mesa.",
+    open: "Ler PDF",
+    download: "Baixar cópia",
+    delete: "Excluir PDF",
+    deleteTitle: "Excluir este PDF da biblioteca privada?",
+    deleteDescription: (name: string) => `“${name}” será removido da Mesa e do armazenamento. Os mapas públicos, as Fichas e o Histórico permanecem intactos.`,
+    deleted: "PDF excluído da biblioteca privada.",
+    close: "Fechar",
+    viewerDescription: "Arquivo integral privado da Mesa. Se o navegador não exibir o PDF, baixe uma cópia.",
+  },
+  en: {
+    eyebrow: "Restricted access",
+    heading: "Table private library",
+    description: "The Game Master can keep complete PDFs they own here. They are not bundled with the public site and are delivered only to approved participants in this table.",
+    openRooms: "Open Tables",
+    noRoom: "Open or create a Table to use the private library.",
+    syncing: "Syncing the private Table…",
+    pending: "The library will appear after the Game Master approves your entry.",
+    room: "Table",
+    privacy: "Authenticated access · approved participants · no public indexing",
+    usage: (used: string, limit: string) => `${used} used of ${limit}`,
+    fileLimit: (size: string, count: number) => `Up to ${size} per PDF · ${count} files per upload`,
+    warning: "Storage needs attention. Download a copy and delete anything you no longer need before another large upload.",
+    add: "Add PDFs",
+    adding: "Uploading…",
+    gmOnly: "Only the Game Master adds books; approved participants can read and download them.",
+    empty: "The Game Master has not added any complete PDFs to this Table yet.",
+    open: "Read PDF",
+    download: "Download copy",
+    delete: "Delete PDF",
+    deleteTitle: "Delete this PDF from the private library?",
+    deleteDescription: (name: string) => `“${name}” will be removed from the Table and file storage. Public maps, character sheets, and history remain intact.`,
+    deleted: "PDF deleted from the private library.",
+    close: "Close",
+    viewerDescription: "Complete private Table file. If the browser cannot display the PDF, download a copy.",
+  },
+};
+
+function isPdfEntry(entry: RoomEntry) {
+  if (entry.type !== "file") return false;
+  const file = entry.data as RoomFileData;
+  return file.contentType === "application/pdf" || file.name.toLocaleLowerCase("en-US").endsWith(".pdf");
+}
+
+function PrivateTableLibrary({
+  language,
+  store,
+  onOpenRooms,
+}: {
+  language: Language;
+  store: RoomStore;
+  onOpenRooms?: () => void;
+}) {
+  const copy = privateLibraryCopy[language];
+  const fileInput = React.useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = React.useState(false);
+  const [opening, setOpening] = React.useState("");
+  const [viewer, setViewer] = React.useState<{ entry: RoomEntry; name: string; url: string } | null>(null);
+  const snapshot = store.snapshot;
+  const gm = snapshot?.participants.find((participant) => participant.role === "gm");
+  const books = snapshot?.files.filter((entry) => isPdfEntry(entry) && entry.actor.id === gm?.id) ?? [];
+  const storage = snapshot?.storage.files;
+  const approved = snapshot?.self.status === "approved";
+  const canManage = approved && snapshot?.self.role === "gm";
+
+  React.useEffect(() => () => {
+    if (viewer?.url) URL.revokeObjectURL(viewer.url);
+  }, [viewer?.url]);
+
+  const uploadBooks = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const selected = Array.from(event.target.files ?? []);
+    event.target.value = "";
+    if (!selected.length || uploading || !store || !storage || !canManage) return;
+    if (selected.length > MAX_ROOM_FILES_PER_UPLOAD) {
+      toast.error(language === "pt" ? `Escolha até ${MAX_ROOM_FILES_PER_UPLOAD} PDFs por vez.` : `Choose up to ${MAX_ROOM_FILES_PER_UPLOAD} PDFs at a time.`);
+      return;
+    }
+    if (selected.some((file) => file.type !== "application/pdf" && !file.name.toLocaleLowerCase("en-US").endsWith(".pdf"))) {
+      toast.error(language === "pt" ? "Esta biblioteca aceita somente arquivos PDF." : "This library accepts PDF files only.");
+      return;
+    }
+    const totalBytes = selected.reduce((total, file) => total + file.size, 0);
+    if (selected.some((file) => !file.size || file.size > storage.maxFileBytes)) {
+      toast.error(language === "pt" ? `Cada PDF deve ter até ${formatStorageBytes(storage.maxFileBytes, "pt-BR")}.` : `Each PDF must be no larger than ${formatStorageBytes(storage.maxFileBytes, "en-US")}.`);
+      return;
+    }
+    if (storage.count + selected.length > storage.maxCount || storage.usedBytes + totalBytes > storage.limitBytes) {
+      toast.error(language === "pt" ? "Esses PDFs ultrapassariam o espaço seguro da Mesa. Exclua arquivos antes de continuar." : "These PDFs would exceed the Table's safe storage. Delete files before continuing.");
+      return;
+    }
+
+    setUploading(true);
+    let published = 0;
+    try {
+      for (const file of selected) {
+        await store.postFile(file);
+        published += 1;
+      }
+      toast.success(language === "pt" ? `${published} PDF(s) adicionado(s) à biblioteca privada.` : `${published} PDF(s) added to the private library.`);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : language === "pt" ? "O envio não terminou." : "The upload did not finish.";
+      toast.error(published ? `${published}/${selected.length}: ${reason}` : reason);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const openBook = async (entry: RoomEntry) => {
+    if (!store || opening) return;
+    setOpening(entry.id);
+    try {
+      const file = entry.data as RoomFileData;
+      const blob = await store.readFile(entry);
+      const pdf = blob.type === "application/pdf" ? blob : blob.slice(0, blob.size, "application/pdf");
+      setViewer({ entry, name: file.name, url: URL.createObjectURL(pdf) });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : language === "pt" ? "O PDF não pôde ser aberto." : "The PDF could not be opened.");
+    } finally {
+      setOpening("");
+    }
+  };
+
+  return (
+    <section className="private-rule-library" data-ready={approved ? "true" : "false"} aria-labelledby="private-library-heading">
+      <header>
+        <div className="private-library-title">
+          <LockKeyhole aria-hidden="true" />
+          <div><p className="eyebrow">{copy.eyebrow}</p><h2 id="private-library-heading">{copy.heading}</h2></div>
+        </div>
+        <p>{copy.description}</p>
+      </header>
+
+      {!store.session ? (
+        <div className="private-library-state"><span>{copy.noRoom}</span>{onOpenRooms && <Button type="button" variant="outline" size="sm" onClick={onOpenRooms}>{copy.openRooms}</Button>}</div>
+      ) : !snapshot ? (
+        <div className="private-library-state"><Loader2 className="animate-spin" aria-hidden="true" /><span>{copy.syncing}</span></div>
+      ) : !approved ? (
+        <div className="private-library-state"><span>{copy.pending}</span>{onOpenRooms && <Button type="button" variant="outline" size="sm" onClick={onOpenRooms}>{copy.openRooms}</Button>}</div>
+      ) : (
+        <>
+          <div className="private-library-access">
+            <div><b>{copy.room}: {snapshot.room.name}</b><span>{copy.privacy}</span></div>
+            {storage && <div className="private-library-storage"><span>{copy.usage(formatStorageBytes(storage.usedBytes, language === "pt" ? "pt-BR" : "en-US"), formatStorageBytes(storage.limitBytes, language === "pt" ? "pt-BR" : "en-US"))}</span><progress value={storage.usedBytes} max={storage.limitBytes} aria-label={copy.usage(formatStorageBytes(storage.usedBytes), formatStorageBytes(storage.limitBytes))} /></div>}
+          </div>
+          {storage && storage.usedBytes >= storage.warningBytes && <p className="private-library-warning">{copy.warning}</p>}
+          <div className="private-library-tools">
+            <span>{copy.gmOnly}</span>
+            {canManage && <><Button type="button" size="sm" disabled={uploading} onClick={() => fileInput.current?.click()}>{uploading ? <Loader2 className="animate-spin" /> : <FileUp />} {uploading ? copy.adding : copy.add}</Button><input ref={fileInput} className="sr-only" type="file" accept=".pdf,application/pdf" multiple onChange={uploadBooks} />{storage && <small>{copy.fileLimit(formatStorageBytes(storage.maxFileBytes, language === "pt" ? "pt-BR" : "en-US"), MAX_ROOM_FILES_PER_UPLOAD)}</small>}</>}
+          </div>
+          {books.length ? (
+            <div className="private-book-list">
+              {books.map((entry) => {
+                const file = entry.data as RoomFileData;
+                return <article key={entry.id} className="private-book-card"><FileText aria-hidden="true" /><div><b>{file.name}</b><span>{formatStorageBytes(file.size, language === "pt" ? "pt-BR" : "en-US")} · {entry.actor.name}</span></div><div><Button type="button" variant="outline" size="sm" disabled={Boolean(opening)} onClick={() => void openBook(entry)}>{opening === entry.id ? <Loader2 className="animate-spin" /> : <BookOpen />} {copy.open}</Button><Button type="button" variant="ghost" size="icon-sm" aria-label={`${copy.download}: ${file.name}`} onClick={() => void store.downloadFile(entry).catch((error) => toast.error(error instanceof Error ? error.message : copy.download))}><Download /></Button>{canManage && <AlertDialog><AlertDialogTrigger asChild><Button type="button" variant="ghost" size="icon-sm" aria-label={`${copy.delete}: ${file.name}`}><Trash2 /></Button></AlertDialogTrigger><AlertDialogContent size="sm"><AlertDialogHeader><AlertDialogTitle>{copy.deleteTitle}</AlertDialogTitle><AlertDialogDescription>{copy.deleteDescription(file.name)}</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>{copy.close}</AlertDialogCancel><AlertDialogAction variant="destructive" onClick={() => void store.deleteFile(entry).then(() => toast.success(copy.deleted)).catch((error) => toast.error(error instanceof Error ? error.message : copy.delete))}>{copy.delete}</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>}</div></article>;
+              })}
+            </div>
+          ) : <div className="private-library-empty"><BookOpen aria-hidden="true" /><p>{copy.empty}</p></div>}
+        </>
+      )}
+
+      <Dialog open={Boolean(viewer)} onOpenChange={(open) => { if (!open) setViewer(null); }}>
+        <DialogContent className="private-book-reader-dialog">
+          <DialogHeader><DialogTitle>{viewer?.name}</DialogTitle><DialogDescription>{copy.viewerDescription}</DialogDescription></DialogHeader>
+          {viewer && <iframe src={viewer.url} title={viewer.name} />}
+          {viewer && <DialogFooter><Button type="button" variant="outline" onClick={() => void store.downloadFile(viewer.entry).catch((error) => toast.error(error instanceof Error ? error.message : copy.download))}><Download /> {copy.download}</Button></DialogFooter>}
+        </DialogContent>
+      </Dialog>
+    </section>
+  );
+}
+
 export function RulesLibrary({
   onShareRule,
   roomReady,
   openReference,
   tableConfig,
   onOpenSettings,
+  roomStore,
+  onOpenRooms,
 }: {
   onShareRule?: (title: string, reference: string) => Promise<void> | void;
   roomReady?: boolean;
   openReference?: string;
   tableConfig: TableConfig;
   onOpenSettings: () => void;
+  roomStore: RoomStore;
+  onOpenRooms?: () => void;
 }) {
   const [language, setLanguage] = React.useState<Language>("pt");
   const [sourceId, setSourceId] = React.useState("fate-condensed");
@@ -570,6 +768,8 @@ export function RulesLibrary({
           <Button type="button" variant="ghost" size="sm" aria-label={`${copy.adjust}: ${tableConfig.profileName}`} onClick={onOpenSettings}><Settings2 /> {copy.adjust}</Button>
         </div>
       </div>
+
+      <PrivateTableLibrary language={language} store={roomStore} onOpenRooms={onOpenRooms} />
 
       <section className="rule-source-catalog" aria-labelledby="rule-sources-heading">
         <header className="rule-source-catalog-header">

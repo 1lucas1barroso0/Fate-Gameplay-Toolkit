@@ -310,6 +310,7 @@ test("keeps the requested human-facing labels and removes redundant sheet copy",
   assert.match(sheet, /className="sheet-edit-actions"/);
   assert.match(sheet, /className="sheet-utility-actions" role="group" aria-label="Ações desta Ficha"/);
   assert.doesNotMatch(sheet, /onOpenTable/);
+  assert.match(app, /roomStore=\{roomStore\} onOpenRooms=\{\(\) => changeWorkspace\("salas"\)\}/);
 });
 
 test("keeps saved Mesas idle and connects every direction without duplicate relationship data", async () => {
@@ -337,6 +338,10 @@ test("keeps saved Mesas idle and connects every direction without duplicate rela
   assert.match(sheet, /Mesa: \{linkedRoom\.roomName/);
   assert.match(sheet, /Regras: \{linkedProfile\.config\.profileName/);
   assert.match(rules, /className="active-profile-strip">\s*<BookOpen/);
+  assert.match(rules, /<PrivateTableLibrary language=\{language\} store=\{roomStore\}/);
+  assert.match(rules, /roomStore: RoomStore/);
+  assert.match(roomsHook, /const readFile = React\.useCallback/);
+  assert.match(roomsHook, /files: entry\.type === "file"/);
   assert.match(dice, /className="active-profile-strip">\s*<Dices/);
   assert.match(rooms, /className="room-quick-actions"/);
   assert.match(rooms, /Você narra esta Mesa\./);

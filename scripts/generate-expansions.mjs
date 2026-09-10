@@ -10,11 +10,17 @@ const localized = (pt, en) => ({ pt, en });
 
 function plainText(html) {
   return html
-    .replace(/<[^>]+>/g, "")
+    .replace(/<[^>]+>/g, " ")
     .replace(/&nbsp;|&#160;/gi, " ")
     .replace(/&amp;/gi, "&")
     .replace(/&quot;/gi, "\"")
     .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&ldquo;|&rdquo;/gi, "\"")
+    .replace(/&lsquo;|&rsquo;/gi, "’")
+    .replace(/&mdash;/gi, "—")
+    .replace(/&ndash;/gi, "–")
+    .replace(/&#x([0-9a-f]+);/gi, (_, value) => String.fromCodePoint(Number.parseInt(value, 16)))
+    .replace(/&#(\d+);/g, (_, value) => String.fromCodePoint(Number(value)))
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -34,6 +40,22 @@ function splitAtH1(html) {
     title: plainText(heading[1]),
     html: html.slice(heading.index, headings[index + 1]?.index ?? html.length),
   }));
+}
+
+function normalizeHeadingParagraphs(html) {
+  return html.replace(
+    /<p\b([^>]*\bclass="[^"]*\bHeading-([1-3])\b[^"]*"[^>]*)>([\s\S]*?)<\/p>/gi,
+    (_, _attributes, level, body) => `<h${level}>${body}</h${level}>`,
+  );
+}
+
+function normalizeSectionTitle(sourceId, title) {
+  if (sourceId === "fate-adversary-toolkit") {
+    return title
+      .replaceAll("Adver saries", "Adversaries")
+      .replaceAll("Enviro nments", "Environments");
+  }
+  return title;
 }
 
 function applyOfficialErrata(sourceId, html) {
@@ -187,7 +209,7 @@ function buildSrdChapters(sourceId, rawHtml, titleMap, options = {}) {
   const language = options.language ?? "en";
 
   return sections.map((section, index) => {
-    const normalizedTitle = section.title.replace(/\s+/g, " ").trim();
+    const normalizedTitle = normalizeSectionTitle(sourceId, section.title.replace(/\s+/g, " ").trim());
     const title = titleMap[normalizedTitle] ?? localized(normalizedTitle, normalizedTitle);
     const withoutRepeatedHeading = section.html.replace(/<h1\b[^>]*>[\s\S]*?<\/h1>/i, "");
     const html = cleanSourceHtml(sourceId, withoutRepeatedHeading);
@@ -196,7 +218,8 @@ function buildSrdChapters(sourceId, rawHtml, titleMap, options = {}) {
     localizedHtml[language] = html;
 
     return {
-      id: slugify(normalizedTitle) || "capitulo-" + String(index + 1),
+      id: options.idMap?.[normalizedTitle]
+        ?? (options.idPrefix ?? "") + (slugify(normalizedTitle) || "capitulo-" + String(index + 1)),
       title,
       label: localized("Capítulo " + String(index + 1).padStart(2, "0"), "Chapter " + String(index + 1).padStart(2, "0")),
       mode: "full-srd",
@@ -240,6 +263,18 @@ function attachLanguage(chapters, language, htmlById) {
       ...chapter.html,
       [language]: htmlById.get(chapter.id) ?? chapter.html[language],
     },
+  }));
+}
+
+function withOriginalEnglishFallback(chapters) {
+  const notice = [
+    "<aside><strong>Texto oficial integral em inglês</strong>",
+    "<p>Este SRD ainda não possui uma tradução aberta em português incorporada ao projeto. O original completo aparece abaixo, preservado em inglês e sem tradução automática.</p></aside>",
+  ].join("");
+  return chapters.map((chapter) => ({
+    ...chapter,
+    label: { ...chapter.label, pt: chapter.label.pt + " · texto EN" },
+    html: { ...chapter.html, pt: notice + chapter.html.en },
   }));
 }
 
@@ -696,12 +731,92 @@ const adversaryTitles = {
   "Using Environments": localized("Usando ambientes", "Using Environments"),
 };
 
-const [coreRaw, systemRaw, adversaryRaw, adversaryPortugueseRaw, portugueseSrdRaw] = await Promise.all([
+const acceleratedTitles = {
+  "Get Started!": localized("Começando!", "Get Started!"),
+  "Telling Stories Together": localized("Contando histórias juntos", "Telling Stories Together"),
+  "Who Do You Want To Be?": localized("Quem você quer ser?", "Who Do You Want To Be?"),
+  "How To Do Stuff: Outcomes, Actions, and Approaches": localized("Como agir: resultados, ações e abordagens", "How To Do Stuff: Outcomes, Actions, and Approaches"),
+  "Challenges, Contests, and Conflicts": localized("Desafios, disputas e conflitos", "Challenges, Contests, and Conflicts"),
+  "Ouch ! Damage, Stress, and Consequences": localized("Ai! Dano, estresse e consequências", "Ouch! Damage, Stress, and Consequences"),
+  "Aspects and Fate Points": localized("Aspectos e pontos de destino", "Aspects and Fate Points"),
+  "Stunts": localized("Façanhas", "Stunts"),
+  "Getting Better at Doing Stuff: Character Advancement": localized("Evolução do personagem", "Getting Better at Doing Stuff: Character Advancement"),
+  "Being the GM": localized("Narrando o jogo", "Being the GM"),
+  "Example Characters": localized("Exemplos de personagens", "Example Characters"),
+};
+
+const acceleratedIds = {
+  "Get Started!": "fate-accelerated-get-started",
+  "Telling Stories Together": "fate-accelerated-telling-stories",
+  "Who Do You Want To Be?": "fate-accelerated-character-creation",
+  "How To Do Stuff: Outcomes, Actions, and Approaches": "fate-accelerated-actions",
+  "Challenges, Contests, and Conflicts": "fate-accelerated-challenges-contests-conflicts",
+  "Ouch ! Damage, Stress, and Consequences": "fate-accelerated-damage-stress-consequences",
+  "Aspects and Fate Points": "fate-accelerated-aspects-fate-points",
+  "Stunts": "fate-accelerated-stunts",
+  "Getting Better at Doing Stuff: Character Advancement": "fate-accelerated-advancement",
+  "Being the GM": "fate-accelerated-game-master",
+  "Example Characters": "fate-accelerated-example-characters",
+};
+
+const ventureTitles = {
+  "Making Your Character and Powers": localized("Criando seu personagem e poderes", "Making Your Character and Powers"),
+  "Powers Catalog": localized("Catálogo de poderes", "Powers Catalog"),
+  "Power Themes": localized("Temas de poderes", "Power Themes"),
+};
+
+const horrorTitles = {
+  "Chapter 1: Gazing Into The Abyss": localized("Capítulo 1: Encarando o abismo", "Chapter 1: Gazing Into the Abyss"),
+  "Chapter 2: The Raveled Sleeve of Care": localized("Capítulo 2: O sono desfeito", "Chapter 2: The Raveled Sleeve of Care"),
+  "Chapter 3: Some Scars Are Invisible": localized("Capítulo 3: Algumas cicatrizes são invisíveis", "Chapter 3: Some Scars Are Invisible"),
+  "Chapter 4: Who’s Who of the Damned": localized("Capítulo 4: Quem é quem entre os condenados", "Chapter 4: Who’s Who of the Damned"),
+  "Chapter 5: We Are All Going to Die": localized("Capítulo 5: Todos nós vamos morrer", "Chapter 5: We Are All Going to Die"),
+  "Chapter 6: The High Cost of Living": localized("Capítulo 6: O alto custo de viver", "Chapter 6: The High Cost of Living"),
+  "Chapter 7: Horror Is the New Pink": localized("Capítulo 7: Horror é o novo rosa", "Chapter 7: Horror Is the New Pink"),
+  "Chapter 8: Spooky Fun": localized("Capítulo 8: Diversão assustadora", "Chapter 8: Spooky Fun"),
+};
+
+const spaceTitles = {
+  "Introduction": localized("Introdução", "Introduction"),
+  "Creating a Fate Space Game": localized("Criando um jogo de Fate no espaço", "Creating a Fate Space Game"),
+  "Character Creation": localized("Criação de personagem", "Character Creation"),
+  "Spacecraft and Space Travel": localized("Naves e viagens espaciais", "Spacecraft and Space Travel"),
+  "Space Combat": localized("Combate espacial", "Space Combat"),
+  "Aliens and Alien Worlds": localized("Alienígenas e mundos alienígenas", "Aliens and Alien Worlds"),
+};
+
+const accessibilityTitles = {
+  "Nothing About Us Without Us": localized("Nada sobre nós sem nós", "Nothing About Us Without Us"),
+  "Gaming With Disabilities": localized("Jogando com deficiências", "Gaming With Disabilities"),
+  "The Nitty Gritty of Specific Disabilities": localized("Os detalhes de deficiências específicas", "The Nitty Gritty of Specific Disabilities"),
+  "Rubber Hits the Road: Conditions and Adaptations": localized("Na prática: condições e adaptações", "Rubber Hits the Road: Conditions and Adaptations"),
+  "Appendices": localized("Apêndices", "Appendices"),
+};
+
+const [
+  coreRaw,
+  systemRaw,
+  adversaryRaw,
+  adversaryPortugueseRaw,
+  portugueseSrdRaw,
+  acceleratedRaw,
+  acceleratedPortugueseRaw,
+  ventureRaw,
+  horrorRaw,
+  spaceRaw,
+  accessibilityRaw,
+] = await Promise.all([
   readFile(join(sourceRoot, "fate-core-SRD.html"), "utf8"),
   readFile(join(sourceRoot, "fate-system-toolkit-SRD.html"), "utf8"),
   readFile(join(sourceRoot, "fate-adversary-toolkit.html"), "utf8"),
   readFile(join(sourceRoot, "fate-adversary-toolkit-pt.html"), "utf8"),
   readFile(join(sourceRoot, "fate-pt-open-srds.json"), "utf8"),
+  readFile(join(sourceRoot, "fate-accelerated-SRD.html"), "utf8"),
+  readFile(join(sourceRoot, "fate-accelerated-SRD-pt.html"), "utf8"),
+  readFile(join(sourceRoot, "venture-city-SRD.html"), "utf8"),
+  readFile(join(sourceRoot, "fate-horror-toolkit-SRD.html"), "utf8"),
+  readFile(join(sourceRoot, "fate-space-toolkit-SRD.html"), "utf8"),
+  readFile(join(sourceRoot, "fate-accessibility-toolkit-SRD.html"), "utf8"),
 ]);
 
 const portugueseSrd = JSON.parse(portugueseSrdRaw);
@@ -736,6 +851,26 @@ const adversaryChapters = [
   ...attachLanguage(adversaryEnglishChapters, "pt", adversaryPortugueseById),
   ...bilingualAdversaryGallery,
 ];
+
+const acceleratedEnglishChapters = buildSrdChapters("fate-accelerated", acceleratedRaw, acceleratedTitles, { skip: 1, idMap: acceleratedIds });
+const acceleratedPortugueseBuilt = buildSrdChapters("fate-accelerated-pt", acceleratedPortugueseRaw, {}, { skip: 1, language: "pt" });
+const acceleratedPortugueseById = new Map(
+  acceleratedEnglishChapters.map((chapter, index) => [chapter.id, acceleratedPortugueseBuilt[index]?.html.pt ?? ""]),
+);
+const fateAcceleratedSrdChapters = attachLanguage(acceleratedEnglishChapters, "pt", acceleratedPortugueseById);
+
+const ventureCitySrdChapters = withOriginalEnglishFallback(
+  buildSrdChapters("venture-city", normalizeHeadingParagraphs(ventureRaw), ventureTitles),
+);
+const horrorToolkitSrdChapters = withOriginalEnglishFallback(
+  buildSrdChapters("fate-horror-toolkit", horrorRaw, horrorTitles, { skip: 1 }),
+);
+const fateSpaceSrdChapters = withOriginalEnglishFallback(
+  buildSrdChapters("fate-space-toolkit", spaceRaw, spaceTitles, { skip: 1, idPrefix: "space-srd-" }),
+);
+const fateAccessibilitySrdChapters = withOriginalEnglishFallback(
+  buildSrdChapters("fate-accessibility-toolkit", accessibilityRaw, accessibilityTitles, { skip: 1 }),
+);
 
 const ventureCityChapters = [
   bookMapChapter({
@@ -4672,6 +4807,15 @@ const knightsOfInvasionChapters = [
   }),
 ];
 
+const fateAcceleratedPublicChapters = [
+  ...fateAcceleratedSrdChapters,
+  ...fateAcceleratedChapters.filter((chapter) => chapter.id === "fate-accelerated-quick-reference"),
+];
+const ventureCityPublicChapters = [...ventureCitySrdChapters, ...ventureCityChapters];
+const horrorToolkitPublicChapters = [...horrorToolkitSrdChapters, ...horrorToolkitChapters];
+const fateSpacePublicChapters = [...fateSpaceSrdChapters, ...fateSpaceToolkitChapters];
+const fateAccessibilityPublicChapters = [...fateAccessibilitySrdChapters, ...fateAccessibilityToolkitChapters];
+
 function sourceWordCount(chapters, language) {
   return chapters.reduce((total, chapter) => total + plainText(chapter.html[language]).split(/\s+/).filter(Boolean).length, 0);
 }
@@ -4743,20 +4887,20 @@ const data = {
         "The fast version of Fate Core, with six Approaches, light character creation, complete action, conflict, aspect, stunt, and advancement rules.",
       ),
       contentNote: localized(
-        "Mapa editorial bilíngue da edição eletrônica fornecida, cobrindo suas regras, criação, orientação ao Narrador, exemplos e referência rápida sem reproduzir o texto protegido do livro.",
-        "Bilingual editorial map of the supplied electronic edition, covering its rules, creation, Game Master guidance, examples, and quick reference without reproducing the book's protected text.",
+        "SRD oficial completo em português e inglês; a referência rápida da edição permanece como mapa editorial bilíngue.",
+        "Complete official SRD in Portuguese and English; the edition's quick reference remains available as a bilingual editorial map.",
       ),
       officialUrl: "https://fate-srd.com/fate-accelerated",
       referenceUrl: localized("https://fatesrdbrasil.gitlab.io/fate-srd-brasil/fate-acelerado/", "https://fate-srd.com/fate-accelerated"),
       licenseUrl: "https://creativecommons.org/licenses/by/3.0/",
-      sourceRevision: "pdf-sha256:bf74c0f5715a873b6091787a95902aedacf12585208f33e73f082d0237f1d823",
+      sourceRevision: "ccby-en-sha256:35e66d6cae993216dcaa6cff867d32d96b485c8e436d00f75f57649ee9e871f0;ccby-pt-sha256:9627cdfa6d3ef89dd78edebf86fb65870eeb90d18e9fd59ba0ba54b15b31b036",
       attribution: localized(
-        "Fate Acelerado ©2013 Evil Hat Productions, LLC. A edição foi escrita e refinada por Clark Valentine, com desenvolvimento do sistema por Leonard Balsera, conceito, texto e diagramação por Fred Hicks, edição de sistema por Mike Olson, edição de clareza por Amanda Valentine e arte de Claudia Cangini; Fate foi originalmente criado por Rob Donoghue e Fred Hicks. Esta página oferece sínteses editoriais originais e aponta para os SRDs licenciados.",
-        "Fate Accelerated Edition ©2013 Evil Hat Productions, LLC. The edition was written and refined by Clark Valentine, with system development by Leonard Balsera, concept, writing, and layout by Fred Hicks, system editing by Mike Olson, clarity editing by Amanda Valentine, and art by Claudia Cangini; Fate was originally created by Rob Donoghue and Fred Hicks. This page provides original editorial summaries and points to the licensed SRDs.",
+        "Esta obra é baseada em Fate Sistema Básico, traduzido, desenvolvido e editado por Alain Valchera, Fábio Silva, Fernando del Angeles, Gabriel Faedrich, Luís Henrique Fonseca e Matheus Funfas e licenciado sob Creative Commons Atribuição 4.0 Internacional. Versão original: Fate Accelerated Edition © Evil Hat Productions, LLC. Documento de Referência do Sistema produzido por Fábio Emílio Costa, Fábio Silva e Jaime Rangel de S. Junior.",
+        "This work is based on Fate Core System and Fate Accelerated Edition, products of Evil Hat Productions, LLC, developed, authored, and edited by Leonard Balsera, Brian Engard, Jeremy Keller, Ryan Macklin, Mike Olson, Clark Valentine, Amanda Valentine, Fred Hicks, and Rob Donoghue, and licensed for our use under the Creative Commons Attribution 3.0 Unported license.",
       ),
-      chapters: fateAcceleratedChapters,
-      wordCount: sourceWordCount(fateAcceleratedChapters, "en"),
-      wordCountByLanguage: { pt: sourceWordCount(fateAcceleratedChapters, "pt"), en: sourceWordCount(fateAcceleratedChapters, "en") },
+      chapters: fateAcceleratedPublicChapters,
+      wordCount: sourceWordCount(fateAcceleratedPublicChapters, "en"),
+      wordCountByLanguage: { pt: sourceWordCount(fateAcceleratedPublicChapters, "pt"), en: sourceWordCount(fateAcceleratedPublicChapters, "en") },
     },
     {
       id: "fate-adversary-toolkit",
@@ -4775,11 +4919,11 @@ const data = {
       ),
       officialUrl: "https://evilhat.com/product/fate-adversary-toolkit/",
       referenceUrl: localized("https://fate-srd.com/fate-adversary-toolkit", "https://fate-srd.com/fate-adversary-toolkit"),
-      licenseUrl: "https://faterpg.com/official-licensing-fate",
-      sourceRevision: "e572e01df2cf6793f430cbbd3a40998087de9a20",
+      licenseUrl: "https://creativecommons.org/licenses/by/3.0/",
+      sourceRevision: "ccby-sha256:ead41d78fb86dcb6a4e0c9e271ed586953e45a1b8bf682cd7a2cd2e214222288",
       attribution: localized(
-        "Fate Adversary Toolkit ©2017 Evil Hat Productions, LLC, escrito e projetado por Brian Engard e Ed Turner. O texto aberto vem do Fate SRD reconhecido pela Evil Hat; a tradução em português deste site é editorial. O texto reservado das galerias não é reproduzido.",
-        "Fate Adversary Toolkit ©2017 Evil Hat Productions, LLC, written and designed by Brian Engard and Ed Turner. Open SRD text comes from the Evil Hat-endorsed Fate SRD. Product-only gallery text is not reproduced.",
+        "Esta obra é baseada no Fate Adversary Toolkit SRD, produto da Evil Hat Productions, LLC, desenvolvido, escrito e editado por Brian Engard, Lara Turner, Joshua Yearsley e Anna Meade, e licenciado sob Creative Commons Atribuição 3.0 Não Adaptada. A tradução em português deste site é editorial; as galerias reservadas permanecem como mapas bilíngues.",
+        "This work is based on the Fate Adversary Toolkit SRD, a product of Evil Hat Productions, LLC, developed, authored, and edited by Brian Engard, Lara Turner, Joshua Yearsley, and Anna Meade, and licensed for our use under the Creative Commons Attribution 3.0 Unported license. Product-only gallery text is not reproduced.",
       ),
       chapters: adversaryChapters,
       wordCount: sourceWordCount(adversaryChapters, "en"),
@@ -4822,20 +4966,20 @@ const data = {
         "Superpowers, corporations, gangs, pregenerated characters, and adventure seeds for a near-future city.",
       ),
       contentNote: localized(
-        "Mapa editorial bilíngue de todas as seções, personagens, poderes, temas e sementes da edição fornecida; o texto protegido permanece na referência oficial.",
-        "Bilingual editorial map of every section, character, power, theme, and seed in the supplied edition; protected text remains in the official reference.",
+        "SRD oficial aberto completo no inglês original, sem tradução automática, acompanhado pelo mapa editorial bilíngue das demais seções da edição.",
+        "Complete open official SRD in English, accompanied by a bilingual editorial map of the edition's remaining sections.",
       ),
       officialUrl: "https://evilhat.com/product/venture-city/",
-      referenceUrl: localized("https://evilhat.com/product/venture-city/", "https://fate-srd.com/venture-city"),
-      licenseUrl: "https://faterpg.com/official-licensing-fate",
-      sourceRevision: "pdf-sha256:4694331b37426bdcfc336be2c75c3bae890ea10aa7f40f2817c92883d6a93f2d",
+      referenceUrl: localized("https://fate-srd.com/venture-city", "https://fate-srd.com/venture-city"),
+      licenseUrl: "https://creativecommons.org/licenses/by/3.0/",
+      sourceRevision: "ccby-sha256:337618bbfd409d250430abf5f0db28c0ddba3fc78a250530828dea05cee6debf",
       attribution: localized(
-        "Venture City ©2016 Evil Hat Productions, LLC, Ed Turner e Brian Engard. A edição fornecida é uma obra com todos os direitos reservados; esta página oferece um mapa editorial bilíngue e links oficiais, sem reproduzir o texto protegido. A página atual da Evil Hat descreve a compilação Venture City Stories + Venture City Powers.",
-        "Venture City ©2016 Evil Hat Productions, LLC, Ed Turner, and Brian Engard. The supplied edition is all rights reserved; this page provides a bilingual editorial map and official links without reproducing protected text. Evil Hat’s current page describes the Venture City Stories + Venture City Powers compilation.",
+        "Esta obra é baseada no Venture City SRD, produto da Evil Hat Productions, LLC, desenvolvido, escrito e editado por Brian Engard, Lara Turner, Joshua Yearsley e Fred Hicks, e licenciado sob Creative Commons Atribuição 3.0 Não Adaptada. O texto fora do SRD permanece apenas no mapa editorial.",
+        "This work is based on the Venture City SRD, a product of Evil Hat Productions, LLC, developed, authored, and edited by Brian Engard, Lara Turner, Joshua Yearsley, and Fred Hicks, and licensed for our use under the Creative Commons Attribution 3.0 Unported license. Text outside the SRD remains available only through the editorial map.",
       ),
-      chapters: ventureCityChapters,
-      wordCount: sourceWordCount(ventureCityChapters, "en"),
-      wordCountByLanguage: { pt: sourceWordCount(ventureCityChapters, "pt"), en: sourceWordCount(ventureCityChapters, "en") },
+      chapters: ventureCityPublicChapters,
+      wordCount: sourceWordCount(ventureCityPublicChapters, "en"),
+      wordCountByLanguage: { pt: sourceWordCount(ventureCityPublicChapters, "pt"), en: sourceWordCount(ventureCityPublicChapters, "en") },
     },
     {
       id: "fate-horror-toolkit",
@@ -4849,20 +4993,20 @@ const data = {
         "Consent, suspense, adversary, doom, survival, intimate-horror, and younger-audience teamwork tools.",
       ),
       contentNote: localized(
-        "Mapa editorial bilíngue de todas as seções e ferramentas da edição fornecida; o PDF e o texto protegido continuam na referência oficial e no SRD indicado.",
-        "Bilingual editorial map of every section and tool in the supplied edition; the PDF and protected text remain in the official reference and linked SRD.",
+        "SRD oficial aberto completo no inglês original, sem tradução automática, acompanhado por um mapa editorial bilíngue da edição.",
+        "Complete open official SRD in English, accompanied by a bilingual editorial map of the edition.",
       ),
       officialUrl: "https://evilhat.com/product/fate-horror-toolkit/",
       referenceUrl: localized("https://fate-srd.com/fate-horror-toolkit", "https://fate-srd.com/fate-horror-toolkit"),
-      licenseUrl: "https://faterpg.com/official-licensing-fate",
-      sourceRevision: "pdf-sha256:b8b65d4bcb36da78a616d829690a02d33607843b4ccf5129f3da2359726bcd5c",
+      licenseUrl: "https://creativecommons.org/licenses/by/3.0/",
+      sourceRevision: "ccby-sha256:89ce452f03534e492433a6d89796b43a6d5ab32c744b34d4c612ac8d8243f650",
       attribution: localized(
-        "Fate Horror Toolkit ©2018 Evil Hat Productions, LLC, escrito e desenvolvido por Richard Bellingham com colaboradores. A edição fornecida declara todos os direitos reservados; esta página oferece um mapa editorial bilíngue e links oficiais, sem reproduzir o texto protegido.",
-        "Fate Horror Toolkit ©2018 Evil Hat Productions, LLC, written and developed by Richard Bellingham with contributors. The supplied edition states that all rights are reserved; this page provides a bilingual editorial map and official links without reproducing protected text.",
+        "Esta obra é baseada no Fate Horror Toolkit SRD, produto da Evil Hat Productions, LLC, desenvolvido, escrito e editado por Richard Bellingham, Bruce Baugh, Elsa S. Henry, Marissa Kelly, Jennifer Lewis, Phil Lewis, Nick Pilon, Sarah Richardson, Lara Turner, Amanda Valentine e Anna K. Meade, e licenciado sob Creative Commons Atribuição 3.0 Não Adaptada.",
+        "This work is based on the Fate Horror Toolkit SRD, a product of Evil Hat Productions, LLC, developed, authored, and edited by Richard Bellingham, Bruce Baugh, Elsa S. Henry, Marissa Kelly, Jennifer Lewis, Phil Lewis, Nick Pilon, Sarah Richardson, Lara Turner, Amanda Valentine, and Anna K. Meade. It is licensed for our use under the Creative Commons Attribution 3.0 Unported license.",
       ),
-      chapters: horrorToolkitChapters,
-      wordCount: sourceWordCount(horrorToolkitChapters, "en"),
-      wordCountByLanguage: { pt: sourceWordCount(horrorToolkitChapters, "pt"), en: sourceWordCount(horrorToolkitChapters, "en") },
+      chapters: horrorToolkitPublicChapters,
+      wordCount: sourceWordCount(horrorToolkitPublicChapters, "en"),
+      wordCountByLanguage: { pt: sourceWordCount(horrorToolkitPublicChapters, "pt"), en: sourceWordCount(horrorToolkitPublicChapters, "en") },
     },
     {
       id: "fate-of-cthulhu",
@@ -4903,20 +5047,20 @@ const data = {
         "Science-fiction tools for creating space settings, travel, spacecraft, combat, aliens, and five campaign starters.",
       ),
       contentNote: localized(
-        "Mapa editorial bilíngue de todas as ferramentas, procedimentos, cenários-modelo e referências da edição fornecida; o texto protegido permanece na referência oficial.",
-        "Bilingual editorial map of every tool, procedure, sample setting, and reference in the supplied edition; protected text remains in the official reference.",
+        "SRD oficial aberto completo no inglês original, sem tradução automática, acompanhado pelo mapa editorial bilíngue dos cenários-modelo e demais seções da edição.",
+        "Complete open official SRD in English, accompanied by a bilingual editorial map of the sample settings and the edition's remaining sections.",
       ),
       officialUrl: "https://evilhat.com/product/fate-space-toolkit/",
-      referenceUrl: localized("https://evilhat.com/product/fate-space-toolkit/", "https://evilhat.com/product/fate-space-toolkit/"),
-      licenseUrl: "https://faterpg.com/official-licensing-fate",
-      sourceRevision: "pdf-sha256:e3c938304f50cb97b194e42c745965dc5b24e8a8de8f1e17db7a8902ed9f5a77",
+      referenceUrl: localized("https://fate-srd.com/fate-space-toolkit", "https://fate-srd.com/fate-space-toolkit"),
+      licenseUrl: "https://creativecommons.org/licenses/by/3.0/",
+      sourceRevision: "ccby-sha256:4808b5b03e1a8c9147c12a1a6b5bcf202079b7b3984fe53dd98cc405daeff85f",
       attribution: localized(
-        "Fate Space Toolkit ©2019 Evil Hat Productions, LLC, escrito por Bill White, C. W. Marshall, Joshua A. C. Newman e Mikki Kendall. A edição fornecida declara todos os direitos reservados; esta página oferece um mapa editorial bilíngue e links oficiais, sem reproduzir o texto protegido.",
-        "Fate Space Toolkit ©2019 Evil Hat Productions, LLC, written by Bill White, C. W. Marshall, Joshua A. C. Newman, and Mikki Kendall. The supplied edition states that all rights are reserved; this page provides a bilingual editorial map and official links without reproducing protected text.",
+        "Esta obra é baseada no Fate Space Toolkit SRD, produto da Evil Hat Productions, LLC, desenvolvido, escrito e editado por Bill White, C. W. Marshall, Joshua A. C. Newman, Mikki Kendall, Mike Olson, Joshua Yearsley e Anna Meade, e licenciado sob Creative Commons Atribuição 3.0 Não Adaptada.",
+        "This work is based on the Fate Space Toolkit SRD, a product of Evil Hat Productions, LLC, developed, authored, and edited by Bill White, C. W. Marshall, Joshua A. C. Newman, Mikki Kendall, Mike Olson, Joshua Yearsley, and Anna Meade. It is licensed for our use under the Creative Commons Attribution 3.0 Unported license.",
       ),
-      chapters: fateSpaceToolkitChapters,
-      wordCount: sourceWordCount(fateSpaceToolkitChapters, "en"),
-      wordCountByLanguage: { pt: sourceWordCount(fateSpaceToolkitChapters, "pt"), en: sourceWordCount(fateSpaceToolkitChapters, "en") },
+      chapters: fateSpacePublicChapters,
+      wordCount: sourceWordCount(fateSpacePublicChapters, "en"),
+      wordCountByLanguage: { pt: sourceWordCount(fateSpacePublicChapters, "pt"), en: sourceWordCount(fateSpacePublicChapters, "en") },
     },
     {
       id: "uprising",
@@ -5092,20 +5236,20 @@ const data = {
         "Tools for respectful disability representation in Fate, competent characters, adaptive devices, scene guidance, and accessible tables.",
       ),
       contentNote: localized(
-        "Mapa editorial bilíngue da edição fornecida, cobrindo representação, criação, deficiências específicas, condições, dispositivos adaptativos e apêndices sem reproduzir o texto protegido.",
-        "Bilingual editorial map of the supplied edition covering representation, character creation, specific disabilities, conditions, adaptive devices, and appendices without reproducing protected text.",
+        "SRD oficial aberto completo no inglês original, sem tradução automática, acompanhado por um mapa editorial bilíngue da edição revisada.",
+        "Complete open official SRD in English, accompanied by a bilingual editorial map of the revised edition.",
       ),
       officialUrl: "https://evilhat.com/product/fate-accessibility-toolkit/",
-      referenceUrl: localized("https://evilhat.com/product/fate-accessibility-toolkit/", "https://evilhat.com/product/fate-accessibility-toolkit/"),
-      licenseUrl: "https://faterpg.com/official-licensing-fate",
-      sourceRevision: "pdf-sha256:56eab2e9f77ee3ad3b05b11fe855b277cb6b008672f6ecfbd28fb26b39aa0f0d",
+      referenceUrl: localized("https://fate-srd.com/fate-accessibility-toolkit", "https://fate-srd.com/fate-accessibility-toolkit"),
+      licenseUrl: "https://creativecommons.org/licenses/by/3.0/",
+      sourceRevision: "ccby-sha256:5e1c413086f232dceecbec45cff40de9aa5c493e7801871f941541aef4404f3b",
       attribution: localized(
-        "Fate Accessibility Toolkit ©2019–2021 Evil Hat Productions, LLC, criado e dirigido por Elsa Sjunneson, com contribuições de Laurel Bell, C.D. Casey Casas, Lillian Cohen-Moore, Philippe-Antoine Ménard, Clark Valentine, Zéph Wibby, Mysty Vander e ASL for RPG; desenvolvimento de sistema por Brian Engard, Clark Valentine e Sophie Lagacé. A edição declara todos os direitos reservados; esta página oferece um mapa editorial bilíngue e links oficiais, sem reproduzir o texto protegido. O Cartão X e Script Change recebem suas próprias atribuições.",
-        "Fate Accessibility Toolkit ©2019–2021 Evil Hat Productions, LLC, created and directed by Elsa Sjunneson, with contributions from Laurel Bell, C.D. Casey Casas, Lillian Cohen-Moore, Philippe-Antoine Ménard, Clark Valentine, Zéph Wibby, Mysty Vander, and ASL for RPG; system development by Brian Engard, Clark Valentine, and Sophie Lagacé. The edition is all rights reserved; this page provides a bilingual editorial map and official links without reproducing protected text. The X-Card and Script Change receive their own attributions.",
+        "Esta obra é baseada no Fate Accessibility Toolkit SRD, produto da Evil Hat Productions, LLC, desenvolvido, escrito e editado por Elsa Sjunneson, Lillian Cohen-Moore, Philippe-Antoine Ménard, Clark Valentine, Zeph Wibby, Mysty Vander, ASL For RPG, Amanda Valentine, Ruth Tillman, Sophie Lagacé e Jaydot Sloane, e licenciado sob Creative Commons Atribuição 3.0 Não Adaptada. A edição revisada fora do SRD permanece no mapa editorial ou na biblioteca privada da Mesa.",
+        "This work is based on the Fate Accessibility Toolkit SRD, a product of Evil Hat Productions, LLC, developed, authored, and edited by Elsa Sjunneson, Lillian Cohen-Moore, Philippe-Antoine Ménard, Clark Valentine, Zeph Wibby, Mysty Vander, ASL For RPG, Amanda Valentine, Ruth Tillman, Sophie Lagacé, and Jaydot Sloane. It is licensed for our use under the Creative Commons Attribution 3.0 Unported license. Revised-edition text outside the SRD remains in the editorial map or the table's private library.",
       ),
-      chapters: fateAccessibilityToolkitChapters,
-      wordCount: sourceWordCount(fateAccessibilityToolkitChapters, "en"),
-      wordCountByLanguage: { pt: sourceWordCount(fateAccessibilityToolkitChapters, "pt"), en: sourceWordCount(fateAccessibilityToolkitChapters, "en") },
+      chapters: fateAccessibilityPublicChapters,
+      wordCount: sourceWordCount(fateAccessibilityPublicChapters, "en"),
+      wordCountByLanguage: { pt: sourceWordCount(fateAccessibilityPublicChapters, "pt"), en: sourceWordCount(fateAccessibilityPublicChapters, "en") },
     },
     {
       id: "knights-of-invasion",

@@ -646,6 +646,7 @@ export async function readRoomSnapshot(
       self: ownParticipant,
       participants: [ownParticipant],
       entries: [],
+      files: [],
       nextCursor: null,
       storage,
     };
@@ -685,8 +686,17 @@ export async function readRoomSnapshot(
         ORDER BY e.created_at DESC, e.id DESC
         LIMIT 101
       `;
+  const filePromise = sql`
+    SELECT e.id, e.type, e.body, e.data_json AS "dataJson",
+           e.actor_id AS "actorId", p.name AS "actorName", e.created_at AS "createdAt"
+    FROM entries e
+    JOIN participants p ON p.id = e.actor_id
+    WHERE e.room_id = ${self.roomId} AND e.type = 'file'
+    ORDER BY e.created_at DESC, e.id DESC
+    LIMIT ${MAX_ROOM_FILES}::INTEGER
+  `;
 
-  const [participantResult, entryResult] = await Promise.all([participantPromise, entryPromise]);
+  const [participantResult, entryResult, fileResult] = await Promise.all([participantPromise, entryPromise, filePromise]);
   const descendingEntries = rows<EntryRow>(entryResult).slice(0, 100);
   const oldest = descendingEntries.at(-1);
 
@@ -701,6 +711,7 @@ export async function readRoomSnapshot(
       createdAt: number | string;
     }>(participantResult).map(participantFromRow),
     entries: descendingEntries.reverse().map(entryFromRow),
+    files: rows<EntryRow>(fileResult).map(entryFromRow),
     nextCursor: rows<EntryRow>(entryResult).length > 100 && oldest
       ? `${oldest.createdAt}.${oldest.id}`
       : null,

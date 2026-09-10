@@ -141,6 +141,7 @@ export type RoomSnapshot = {
   self: RoomParticipant;
   participants: RoomParticipant[];
   entries: RoomEntry[];
+  files: RoomEntry[];
   nextCursor: string | null;
   storage: RoomStorageStats;
 };

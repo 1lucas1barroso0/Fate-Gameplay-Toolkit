@@ -278,7 +278,10 @@ export function useRoom() {
         ? {
             ...current,
             entries: [...current.entries.filter((item) => item.id !== entry.id), entry].slice(-100),
-            storage: entry.type === "file" && !current.entries.some((item) => item.id === entry.id)
+            files: entry.type === "file"
+              ? [entry, ...current.files.filter((item) => item.id !== entry.id)].slice(0, MAX_ROOM_FILES)
+              : current.files,
+            storage: entry.type === "file" && !current.files.some((item) => item.id === entry.id)
               ? {
                   ...current.storage,
                   files: {
@@ -365,9 +368,8 @@ export function useRoom() {
     throw new Error("O arquivo chegou, mas ainda não apareceu na Mesa. Atualize o histórico em alguns instantes.");
   }, [rememberEntry, session, snapshot?.storage.files]);
 
-  const downloadFile = React.useCallback(async (entry: RoomEntry) => {
+  const readFile = React.useCallback(async (entry: RoomEntry) => {
     if (!session || entry.type !== "file") throw new Error("Este arquivo não está disponível.");
-    const data = entry.data as RoomFileData;
     const response = await fetch(`/api/rooms/${session.roomCode}/files/${encodeURIComponent(entry.id)}`, {
       method: "GET",
       headers: sessionHeaders(session),
@@ -377,7 +379,12 @@ export function useRoom() {
       const error = await response.json().catch(() => ({})) as ApiError;
       throw new Error(error.error || "O arquivo não pôde ser aberto.");
     }
-    const url = URL.createObjectURL(await response.blob());
+    return response.blob();
+  }, [session]);
+
+  const downloadFile = React.useCallback(async (entry: RoomEntry) => {
+    const data = entry.data as RoomFileData;
+    const url = URL.createObjectURL(await readFile(entry));
     const anchor = document.createElement("a");
     anchor.href = url;
     anchor.download = data.name || entry.body || "arquivo";
@@ -385,7 +392,7 @@ export function useRoom() {
     anchor.click();
     anchor.remove();
     window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
-  }, [session]);
+  }, [readFile]);
 
   const deleteFile = React.useCallback(async (entry: RoomEntry) => {
     if (!session || entry.type !== "file") throw new Error("Este arquivo não está disponível.");
@@ -397,6 +404,7 @@ export function useRoom() {
     setSnapshot((current) => current ? {
       ...current,
       entries: current.entries.filter((item) => item.id !== entry.id),
+      files: current.files.filter((item) => item.id !== entry.id),
       storage: {
         ...current.storage,
         files: {
@@ -571,6 +579,7 @@ export function useRoom() {
     postNote,
     postRule,
     postFile,
+    readFile,
     downloadFile,
     deleteFile,
     exportHistory,
