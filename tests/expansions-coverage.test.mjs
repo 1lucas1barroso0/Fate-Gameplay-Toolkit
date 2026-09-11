@@ -27,8 +27,17 @@ function sourceText(item, language = "en") {
   );
 }
 
+function localizedStrings(value, language) {
+  if (Array.isArray(value)) return value.flatMap((item) => localizedStrings(item, language));
+  if (!value || typeof value !== "object") return [];
+  return Object.entries(value).flatMap(([key, nested]) => {
+    if (key === language && typeof nested === "string") return [nested];
+    return localizedStrings(nested, language);
+  });
+}
+
 test("mantém o Condensado fora das expansões e identifica cada fonte sem ambiguidade", () => {
-  assert.equal(data.version, "2026-09-10");
+  assert.equal(data.version, "2026-09-11");
   assert.deepEqual(
     data.sources.map((item) => item.id),
     ["fate-guide", "fate-core", "fate-accelerated", "fate-adversary-toolkit", "fate-system-toolkit", "venture-city", "fate-horror-toolkit", "fate-of-cthulhu", "fate-space-toolkit", "uprising", "tachyon-squadron", "wearing-the-cape", "the-crisp-line", "secrets-of-cats", "grimoire", "fate-accessibility-toolkit", "knights-of-invasion"],
@@ -82,6 +91,49 @@ test("mantém o Condensado fora das expansões e identifica cada fonte sem ambig
     const standalone = source(id);
     assert.deepEqual(standalone.tags.map((tag) => tag.pt), ["Oficial", "Jogo autônomo", "Opcional"]);
     assert.equal(new Set(standalone.tags.map((tag) => tag.pt)).size, 3);
+  }
+});
+
+test("mantém os SRDs abertos completos, separados e bilíngues", () => {
+  for (const id of ["venture-city", "fate-horror-toolkit", "fate-space-toolkit", "fate-accessibility-toolkit"]) {
+    const chapters = source(id).chapters.filter((chapter) => chapter.mode === "full-srd");
+    assert.ok(chapters.length > 0, id + " perdeu seus capítulos integrais.");
+
+    for (const chapter of chapters) {
+      const portuguese = textFromHtml(chapter.html.pt);
+      const english = textFromHtml(chapter.html.en);
+      const portugueseWords = portuguese.split(/\s+/).filter(Boolean).length;
+      const englishWords = english.split(/\s+/).filter(Boolean).length;
+      const ratio = portugueseWords / englishWords;
+
+      assert.ok(portugueseWords > 100, id + ":" + chapter.id + " perdeu o texto integral em português.");
+      assert.ok(englishWords > 100, id + ":" + chapter.id + " perdeu o texto integral em inglês.");
+      assert.notEqual(portuguese, english, id + ":" + chapter.id + " copiou o inglês para o modo português.");
+      assert.ok(ratio >= 0.72 && ratio <= 1.4, id + ":" + chapter.id + " apresenta cobertura desigual entre os idiomas: " + ratio.toFixed(2));
+      assert.doesNotMatch(portuguese, /texto (?:original )?(?:integral )?em inglês|texto EN|sem tradução automática/iu);
+    }
+  }
+});
+
+test("não mistura terminologia inglesa nem resíduos de tradução no modo português", () => {
+  const portuguese = textFromHtml(localizedStrings(data, "pt").join(" "));
+  assert.doesNotMatch(
+    portuguese,
+    /(?<![\p{L}])(?:approaches?|stunts?|skills?|refresh|boosts?|milestones?|aspects?|compels?|invocations?|consequences?|fate points?|stress tracks?|stress boxes?|create an advantage|overcome|attack|defend|game masters?|GMs?|NPCs?|PCs?|playsheets?|endgames?|pools?|rolls?)(?![\p{L}])/giu,
+  );
+  assert.doesNotMatch(
+    portuguese,
+    /(?:AbordagemAbord|invocadosaspect|forçadasaprimoradasforçadas|períciaperícia|façanha acrobacia|VontadeWill|Recursosna|Primitiv e|Archai c|Old-Fashione d|Convencional l|Avanço d(?![aeo])|Sangramento-Edg e|AtletismoAtletismo|AtletismoAthletics|períciasHabilidades|PsionismoPsi|hiperespaçohiperespaço|minhocaminhoca|(?<=[\p{L}])Tradução)/giu,
+  );
+  assert.doesNotMatch(portuguese, /\b(?:compelências?|atualizações?|refrescos?|faixas? de estresse|pool|piscina)\b/giu);
+
+  const spaceChapter = source("fate-space-toolkit").chapters.find((chapter) => chapter.id === "space-srd-character-creation");
+  assert.ok(spaceChapter, "Fate Space perdeu o capítulo de criação de personagem.");
+  for (const language of ["pt", "en"]) {
+    const needle = language === "pt"
+      ? /Artefatos tecnológicos podem ser atribuídos a um nível de tecnologia/gu
+      : /Technological artifacts can be assigned a tech level/gu;
+    assert.equal(textFromHtml(spaceChapter.html[language]).match(needle)?.length, 1, "A introdução da tabela de tecnologia foi duplicada em " + language + ".");
   }
 });
 
@@ -180,17 +232,17 @@ test("incorpora integralmente os SRDs oficiais atuais e o guia editorial", () =>
   assert.equal(accelerated.sourceRevision, "ccby-en-sha256:35e66d6cae993216dcaa6cff867d32d96b485c8e436d00f75f57649ee9e871f0;ccby-pt-sha256:9627cdfa6d3ef89dd78edebf86fb65870eeb90d18e9fd59ba0ba54b15b31b036");
   assert.equal(adversary.sourceRevision, "ccby-sha256:ead41d78fb86dcb6a4e0c9e271ed586953e45a1b8bf682cd7a2cd2e214222288");
   assert.equal(system.sourceRevision, "9db805a2e3e32ed78b714f6f4e7083c968a88ab9");
-  assert.equal(venture.sourceRevision, "ccby-sha256:337618bbfd409d250430abf5f0db28c0ddba3fc78a250530828dea05cee6debf");
-  assert.equal(horror.sourceRevision, "ccby-sha256:89ce452f03534e492433a6d89796b43a6d5ab32c744b34d4c612ac8d8243f650");
+  assert.equal(venture.sourceRevision, "ccby-sha256:337618bbfd409d250430abf5f0db28c0ddba3fc78a250530828dea05cee6debf;pt-adaptation:2026-09-11");
+  assert.equal(horror.sourceRevision, "ccby-sha256:89ce452f03534e492433a6d89796b43a6d5ab32c744b34d4c612ac8d8243f650;pt-adaptation:2026-09-11");
   assert.equal(cthulhu.sourceRevision, "pdf-sha256:f315c771643aac49472349df317a2f6565c551e3ba5e554b0d226fb61f0cca52");
-  assert.equal(space.sourceRevision, "ccby-sha256:4808b5b03e1a8c9147c12a1a6b5bcf202079b7b3984fe53dd98cc405daeff85f");
+  assert.equal(space.sourceRevision, "ccby-sha256:4808b5b03e1a8c9147c12a1a6b5bcf202079b7b3984fe53dd98cc405daeff85f;pt-adaptation:2026-09-11");
   assert.equal(uprising.sourceRevision, "pdf-sha256:2db0872cf71996939ccd6bdb23be60158ccc3659195a427d3f173ab8dfec67d1");
   assert.equal(tachyon.sourceRevision, "pdf-sha256:5e61a7b90728380f7e85ccf226dc4dc9936d8182f6b88d628e0b2ffd02feda7a");
   assert.equal(wearingTheCape.sourceRevision, "pdf-sha256:3a1d6ab2c58e69e0c64dc037bab196ef345c264347b3917ee058ff4f031c7b59");
   assert.equal(crispLine.sourceRevision, "pdf-sha256:9d18013fcc378a0a3ab72d1c23f74c0c2715a85d22e263bf8e0f22de7415e4d8");
   assert.equal(secretsOfCats.sourceRevision, "pdf-sha256:83e4bfcd793bdbdfd675a52697957d0384d50635368a78fb827879d9806b9d76");
   assert.equal(grimoire.sourceRevision, "pdf-sha256:e0d8c08027a35cf36cf953c937d3a08b8ee6881a9c9717c93e2813d62d94832e");
-  assert.equal(accessibilityToolkit.sourceRevision, "ccby-sha256:5e1c413086f232dceecbec45cff40de9aa5c493e7801871f941541aef4404f3b");
+  assert.equal(accessibilityToolkit.sourceRevision, "ccby-sha256:5e1c413086f232dceecbec45cff40de9aa5c493e7801871f941541aef4404f3b;pt-adaptation:2026-09-11");
   assert.equal(knightsOfInvasion.sourceRevision, "pdf-sha256:589a1e35570910632afa39ee839185b25c75b88143c01b9153003d1a0fab71ff");
 
   const adversaryText = sourceText(adversary, "pt");
@@ -290,7 +342,7 @@ test("incorpora integralmente os SRDs oficiais atuais e o guia editorial", () =>
     "la Société",
     "les Citoyens",
     "les Exilés",
-    "nove playsheets",
+    "nove fichas de arquétipo",
     "Blackmail",
     "meios",
     "fins",
@@ -442,9 +494,9 @@ test("incorpora integralmente os SRDs oficiais atuais e o guia editorial", () =>
     "bruxo",
     "daemon",
     "grimórios",
-    "Bargain aspects",
+    "Aspectos de Barganha",
     "Favors Owed",
-    "Leverage",
+    "Influência",
     "Glamours",
     "Igreja de Myros",
     "House Volio",
@@ -471,8 +523,8 @@ test("incorpora integralmente os SRDs oficiais atuais e o guia editorial", () =>
     "esquizofrenia",
     "bipolaridade",
     "TEPT",
-    "Exhausted",
-    "Without My Device",
+    "Exausto",
+    "Sem Meu Dispositivo",
     "dispositivos adaptativos",
     "ASL",
   ]) {

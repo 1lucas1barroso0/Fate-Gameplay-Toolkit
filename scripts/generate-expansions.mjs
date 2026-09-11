@@ -202,6 +202,14 @@ function cleanSourceHtml(sourceId, html) {
       .replaceAll("limitation a spect", "limitation aspect");
   }
 
+  if (sourceId === "fate-space-toolkit") {
+    const techLevelIntro = "Technological artifacts can be assigned a <strong>tech level</strong>, an aspect that reflects its relative technological or scientific sophistication. When used against more primitive artifacts, the more sophisticated artifact grants its user an advantage with one free invocation per scene, or two free invocations if the tech level difference is three or more.";
+    cleaned = cleaned.replace(
+      `<h4>Tech Level</h4>\n<p>${techLevelIntro}</p>\n<h4>Tech Level</h4>\n<p>${techLevelIntro} </p>`,
+      `<h4>Tech Level</h4>\n<p>${techLevelIntro}</p>`,
+    );
+  }
+
   return cleaned;
 }
 
@@ -267,16 +275,15 @@ function attachLanguage(chapters, language, htmlById) {
   }));
 }
 
-function withOriginalEnglishFallback(chapters) {
-  const notice = [
-    "<aside><strong>Texto oficial integral em inglês</strong>",
-    "<p>Este SRD ainda não possui uma tradução aberta em português incorporada ao projeto. O original completo aparece abaixo, preservado em inglês e sem tradução automática.</p></aside>",
-  ].join("");
-  return chapters.map((chapter) => ({
-    ...chapter,
-    label: { ...chapter.label, pt: chapter.label.pt + " · texto EN" },
-    html: { ...chapter.html, pt: notice + chapter.html.en },
-  }));
+function attachRequiredLanguage(chapters, language, htmlById, sourceId) {
+  const missing = chapters.filter((chapter) => !htmlById.get(chapter.id)?.trim()).map((chapter) => chapter.id);
+  if (missing.length) {
+    throw new Error(`Tradução ${language} incompleta em ${sourceId}: ${missing.join(", ")}`);
+  }
+  const cleanedById = new Map(
+    [...htmlById].map(([chapterId, html]) => [chapterId, cleanSourceHtml(`${sourceId}-${language}`, html)]),
+  );
+  return attachLanguage(chapters, language, cleanedById);
 }
 
 const guideChapters = [
@@ -806,6 +813,7 @@ const [
   horrorRaw,
   spaceRaw,
   accessibilityRaw,
+  openPortugueseSrdRaw,
 ] = await Promise.all([
   readFile(join(sourceRoot, "fate-core-SRD.html"), "utf8"),
   readFile(join(sourceRoot, "fate-system-toolkit-SRD.html"), "utf8"),
@@ -818,9 +826,11 @@ const [
   readFile(join(sourceRoot, "fate-horror-toolkit-SRD.html"), "utf8"),
   readFile(join(sourceRoot, "fate-space-toolkit-SRD.html"), "utf8"),
   readFile(join(sourceRoot, "fate-accessibility-toolkit-SRD.html"), "utf8"),
+  readFile(join(sourceRoot, "fate-open-srds-pt.json"), "utf8"),
 ]);
 
 const portugueseSrd = JSON.parse(portugueseSrdRaw);
+const openPortugueseSrd = JSON.parse(openPortugueseSrdRaw);
 const corePortugueseGroups = portugueseSrd.groups.filter((group) => group.source === "fate-core");
 const systemPortugueseGroups = portugueseSrd.groups.filter((group) => group.source === "fate-system-toolkit");
 
@@ -860,17 +870,33 @@ const acceleratedPortugueseById = new Map(
 );
 const fateAcceleratedSrdChapters = attachLanguage(acceleratedEnglishChapters, "pt", acceleratedPortugueseById);
 
-const ventureCitySrdChapters = withOriginalEnglishFallback(
-  buildSrdChapters("venture-city", normalizeHeadingParagraphs(ventureRaw), ventureTitles),
+const ventureCityEnglishChapters = buildSrdChapters("venture-city", normalizeHeadingParagraphs(ventureRaw), ventureTitles);
+const ventureCitySrdChapters = attachRequiredLanguage(
+  ventureCityEnglishChapters,
+  "pt",
+  new Map(Object.entries(openPortugueseSrd.sources["venture-city"] ?? {})),
+  "venture-city",
 );
-const horrorToolkitSrdChapters = withOriginalEnglishFallback(
-  buildSrdChapters("fate-horror-toolkit", horrorRaw, horrorTitles, { skip: 1 }),
+const horrorToolkitEnglishChapters = buildSrdChapters("fate-horror-toolkit", horrorRaw, horrorTitles, { skip: 1 });
+const horrorToolkitSrdChapters = attachRequiredLanguage(
+  horrorToolkitEnglishChapters,
+  "pt",
+  new Map(Object.entries(openPortugueseSrd.sources["fate-horror-toolkit"] ?? {})),
+  "fate-horror-toolkit",
 );
-const fateSpaceSrdChapters = withOriginalEnglishFallback(
-  buildSrdChapters("fate-space-toolkit", spaceRaw, spaceTitles, { skip: 1, idPrefix: "space-srd-" }),
+const fateSpaceEnglishChapters = buildSrdChapters("fate-space-toolkit", spaceRaw, spaceTitles, { skip: 1, idPrefix: "space-srd-" });
+const fateSpaceSrdChapters = attachRequiredLanguage(
+  fateSpaceEnglishChapters,
+  "pt",
+  new Map(Object.entries(openPortugueseSrd.sources["fate-space-toolkit"] ?? {})),
+  "fate-space-toolkit",
 );
-const fateAccessibilitySrdChapters = withOriginalEnglishFallback(
-  buildSrdChapters("fate-accessibility-toolkit", accessibilityRaw, accessibilityTitles, { skip: 1 }),
+const fateAccessibilityEnglishChapters = buildSrdChapters("fate-accessibility-toolkit", accessibilityRaw, accessibilityTitles, { skip: 1 });
+const fateAccessibilitySrdChapters = attachRequiredLanguage(
+  fateAccessibilityEnglishChapters,
+  "pt",
+  new Map(Object.entries(openPortugueseSrd.sources["fate-accessibility-toolkit"] ?? {})),
+  "fate-accessibility-toolkit",
 );
 
 const ventureCityChapters = [
@@ -4522,7 +4548,7 @@ const fateAccessibilityToolkitChapters = [
     ptTitle: "Fate Accessibility Toolkit: jogar e conduzir personagens com deficiência",
     enTitle: "Fate Accessibility Toolkit: playing and GMing disabled characters",
     pages: "Páginas 11–28",
-    ptIntro: "A seção Gaming With Disabilities mostra como representar deficiência por aspectos, perícias, façanhas, extras e condições sem presumir uma regra universal. Ela também orienta o Narrador a descrever cenas por mais de um sentido e a tornar a mesa fisicamente acessível.",
+    ptIntro: "A seção Jogando com Deficiências mostra como representar deficiência por aspectos, perícias, façanhas, extras e condições sem presumir uma regra universal. Ela também orienta o Narrador a descrever cenas por mais de um sentido e a tornar a mesa fisicamente acessível.",
     ptSections: [
       "Personagens: a deficiência pode existir apenas em um aspecto ou receber suporte mecânico adicional; ambas as escolhas são válidas e não precisam se equilibrar por uma vantagem obrigatória.",
       "Façanhas: dispositivos, treinamento, adaptação e experiência podem gerar bônus estreitos, ações novas ou formas diferentes de usar uma perícia, como ler lábios, deduzir pistas ou usar uma prótese criativa.",
@@ -4549,8 +4575,8 @@ const fateAccessibilityToolkitChapters = [
     ptIntro: "O primeiro conjunto de capítulos específicos aborda cegueira, surdez e perda auditiva, mobilidade, nanismo e doença crônica. Cada parte combina experiência, aspectos, perícias, façanhas, condições e dispositivos possíveis, sempre como opções adaptáveis.",
     ptSections: [
       "Cegueira: percepção pode usar som, toque, cheiro, memória espacial, cão-guia, bengala e tecnologia; o objetivo não é fingir que a cegueira não existe, mas mostrar outros modos de conhecer o ambiente.",
-      "D/deaf e hard of hearing: leitura labial, língua de sinais, implantes, dispositivos auditivos e comunicação visual mudam a cena sem reduzir a personagem a uma falha de audição.",
-      "Mobilidade: cadeiras, próteses, muletas, scooters e adaptações de cenário podem ser aspectos, façanhas ou extras; Athletics continua representando movimento, não apenas correr.",
+      "Surdez/surdez e perda auditiva: leitura labial, língua de sinais, implantes, dispositivos auditivos e comunicação visual mudam a cena sem reduzir a personagem a uma falha de audição.",
+      "Mobilidade: cadeiras, próteses, muletas, scooters e adaptações de cenário podem ser aspectos, façanhas ou extras; Atletismo continua representando movimento, não apenas correr.",
       "Nanismo: escala, arquitetura e tratamento social exigem descrição específica, não uma penalidade automática. O personagem decide o que é parte de sua identidade e o que é apenas detalhe.",
       "Doença crônica: energia, dor, medicação, apoios e recuperação podem ser modelados com condições ou permanecer narrativos conforme a intenção da Mesa.",
     ],
@@ -4596,10 +4622,10 @@ const fateAccessibilityToolkitChapters = [
     pages: "Páginas 72–79",
     ptIntro: "As condições modelam estados temporários sem transformar deficiência em uma lista de penalidades permanentes. Cada condição tem gatilho, boxes, efeito e recuperação; a personagem e o Narrador devem ajustar a intensidade à experiência escolhida.",
     ptSections: [
-      "Exhausted: uma trilha de energia ou depressão que marca esforço, limita recuperação e exige segurança, descanso e um superar com Physique ou Will.",
-      "Hacked, Limited Focus e Low On Charge: representam implantes, próteses e dispositivos conectados ou alimentados por bateria, com recuperação baseada em expulsar invasores, dormir ou recarregar.",
-      "Hypomania e Medical Debt: estados ligados a bipolaridade, tratamento e custo podem criar aspectos temporários, risco narrativo e obstáculos de Resources.",
-      "Meltdown/Panic Attack/Anxiety Attack, Off My Meds e Without My Device: efeitos variam por pessoa; a recuperação remove o estímulo, retoma medicação ou devolve o dispositivo.",
+      "Exausto: uma trilha de energia ou depressão que marca esforço, limita recuperação e exige segurança, descanso e uma ação de superar com Vigor ou Vontade.",
+      "Hackeado, Foco Limitado e Pouca Carga: representam implantes, próteses e dispositivos conectados ou alimentados por bateria, com recuperação baseada em expulsar invasores, dormir ou recarregar.",
+      "Hipomania e Dívida Médica: estados ligados a bipolaridade, tratamento e custo podem criar aspectos temporários, risco narrativo e obstáculos de Recursos.",
+      "Meltdown, Ataque de Pânico, Crise de Ansiedade, Sem Minha Medicação e Sem Meu Dispositivo: os efeitos variam por pessoa; a recuperação remove o estímulo, retoma a medicação ou devolve o dispositivo.",
       "Flexibilidade: nem toda experiência precisa de condição. Um aspecto, uma façanha ou uma descrição podem ser a representação correta.",
     ],
     ptUse: "Marque uma condição apenas quando isso ajudar a Mesa a perguntar algo interessante. Combine antes como ela funciona e nunca use uma condição para invalidar a pessoa jogadora.",
@@ -4621,7 +4647,7 @@ const fateAccessibilityToolkitChapters = [
     ptIntro: "Dispositivos adaptativos podem ser apenas descrição, aspecto, façanha ou extra. A escolha define quanto a tecnologia, o animal de serviço ou a adaptação física participa das regras e evita presumir que toda pessoa usa o mesmo recurso.",
     ptSections: [
       "Representação: bengalas, cadeiras, próteses, dispositivos auditivos, tecnologia neural, cobertores, caixas de fidget e animais de serviço ganham mecânica somente quando isso é desejado.",
-      "Façanhas: exemplos como Crutch Shield, Hearing Aid Eavesdroppers, Weighted Blanket, Sword Cane e Tremor Sense mostram bônus estreitos, ataques inesperados e recuperação de condições.",
+      "Façanhas: exemplos como Escudo de Muleta, Escuta com Dispositivo Auditivo, Cobertor Pesado, Bengala-Espada e Sentido de Tremores mostram bônus estreitos, ataques inesperados e recuperação de condições.",
       "Extras: um dispositivo pode exigir uma permissão em aspecto e custar façanha, Recarga, perícia ou recursos; benefícios adicionais devem ser escolhidos com a pessoa jogadora.",
       "Animais de serviço: cães e outros companheiros ajudam a navegar, alertar e reduzir efeitos, mas continuam animais com personalidade, necessidades e possibilidade de complicação.",
       "Acessibilidade fantástica: magia e ficção científica podem criar soluções novas sem afirmar que a deficiência precisa ser removida para a personagem participar.",
@@ -4822,7 +4848,7 @@ function sourceWordCount(chapters, language) {
 }
 
 const data = {
-  version: "2026-09-10",
+  version: "2026-09-11",
   precedence: localized(
     "Fate Condensado é a regra principal. O guia contextualiza; as expansões explicam, ampliam ou oferecem opções. Se houver diferença, Fate Condensado prevalece e nada é ativado sem escolha da Mesa.",
     "Fate Condensed is the principal ruleset. The guide adds context; expansions explain, extend, or offer options. If anything differs, Fate Condensed prevails and nothing is enabled without the table choosing it.",
@@ -4967,13 +4993,13 @@ const data = {
         "Superpowers, corporations, gangs, pregenerated characters, and adventure seeds for a near-future city.",
       ),
       contentNote: localized(
-        "SRD oficial aberto completo no inglês original, sem tradução automática, acompanhado pelo mapa editorial bilíngue das demais seções da edição.",
-        "Complete open official SRD in English, accompanied by a bilingual editorial map of the edition's remaining sections.",
+        "SRD aberto integral nos dois modos: original oficial em inglês e adaptação completa em português, acompanhado pelo mapa editorial bilíngue das demais seções da edição.",
+        "Complete open SRD in both modes: the official English original and a full Portuguese adaptation, accompanied by a bilingual editorial map of the edition's remaining sections.",
       ),
       officialUrl: "https://evilhat.com/product/venture-city/",
       referenceUrl: localized("https://fate-srd.com/venture-city", "https://fate-srd.com/venture-city"),
       licenseUrl: "https://creativecommons.org/licenses/by/3.0/",
-      sourceRevision: "ccby-sha256:337618bbfd409d250430abf5f0db28c0ddba3fc78a250530828dea05cee6debf",
+      sourceRevision: "ccby-sha256:337618bbfd409d250430abf5f0db28c0ddba3fc78a250530828dea05cee6debf;pt-adaptation:2026-09-11",
       attribution: localized(
         "Esta obra é baseada no Venture City SRD, produto da Evil Hat Productions, LLC, desenvolvido, escrito e editado por Brian Engard, Lara Turner, Joshua Yearsley e Fred Hicks, e licenciado sob Creative Commons Atribuição 3.0 Não Adaptada. O texto fora do SRD permanece apenas no mapa editorial.",
         "This work is based on the Venture City SRD, a product of Evil Hat Productions, LLC, developed, authored, and edited by Brian Engard, Lara Turner, Joshua Yearsley, and Fred Hicks, and licensed for our use under the Creative Commons Attribution 3.0 Unported license. Text outside the SRD remains available only through the editorial map.",
@@ -4994,13 +5020,13 @@ const data = {
         "Consent, suspense, adversary, doom, survival, intimate-horror, and younger-audience teamwork tools.",
       ),
       contentNote: localized(
-        "SRD oficial aberto completo no inglês original, sem tradução automática, acompanhado por um mapa editorial bilíngue da edição.",
-        "Complete open official SRD in English, accompanied by a bilingual editorial map of the edition.",
+        "SRD aberto integral nos dois modos: original oficial em inglês e adaptação completa em português, acompanhado por um mapa editorial bilíngue da edição.",
+        "Complete open SRD in both modes: the official English original and a full Portuguese adaptation, accompanied by a bilingual editorial map of the edition.",
       ),
       officialUrl: "https://evilhat.com/product/fate-horror-toolkit/",
       referenceUrl: localized("https://fate-srd.com/fate-horror-toolkit", "https://fate-srd.com/fate-horror-toolkit"),
       licenseUrl: "https://creativecommons.org/licenses/by/3.0/",
-      sourceRevision: "ccby-sha256:89ce452f03534e492433a6d89796b43a6d5ab32c744b34d4c612ac8d8243f650",
+      sourceRevision: "ccby-sha256:89ce452f03534e492433a6d89796b43a6d5ab32c744b34d4c612ac8d8243f650;pt-adaptation:2026-09-11",
       attribution: localized(
         "Esta obra é baseada no Fate Horror Toolkit SRD, produto da Evil Hat Productions, LLC, desenvolvido, escrito e editado por Richard Bellingham, Bruce Baugh, Elsa S. Henry, Marissa Kelly, Jennifer Lewis, Phil Lewis, Nick Pilon, Sarah Richardson, Lara Turner, Amanda Valentine e Anna K. Meade, e licenciado sob Creative Commons Atribuição 3.0 Não Adaptada.",
         "This work is based on the Fate Horror Toolkit SRD, a product of Evil Hat Productions, LLC, developed, authored, and edited by Richard Bellingham, Bruce Baugh, Elsa S. Henry, Marissa Kelly, Jennifer Lewis, Phil Lewis, Nick Pilon, Sarah Richardson, Lara Turner, Amanda Valentine, and Anna K. Meade. It is licensed for our use under the Creative Commons Attribution 3.0 Unported license.",
@@ -5048,13 +5074,13 @@ const data = {
         "Science-fiction tools for creating space settings, travel, spacecraft, combat, aliens, and five campaign starters.",
       ),
       contentNote: localized(
-        "SRD oficial aberto completo no inglês original, sem tradução automática, acompanhado pelo mapa editorial bilíngue dos cenários-modelo e demais seções da edição.",
-        "Complete open official SRD in English, accompanied by a bilingual editorial map of the sample settings and the edition's remaining sections.",
+        "SRD aberto integral nos dois modos: original oficial em inglês e adaptação completa em português, acompanhado pelo mapa editorial bilíngue dos cenários-modelo e demais seções da edição.",
+        "Complete open SRD in both modes: the official English original and a full Portuguese adaptation, accompanied by a bilingual editorial map of the sample settings and the edition's remaining sections.",
       ),
       officialUrl: "https://evilhat.com/product/fate-space-toolkit/",
       referenceUrl: localized("https://fate-srd.com/fate-space-toolkit", "https://fate-srd.com/fate-space-toolkit"),
       licenseUrl: "https://creativecommons.org/licenses/by/3.0/",
-      sourceRevision: "ccby-sha256:4808b5b03e1a8c9147c12a1a6b5bcf202079b7b3984fe53dd98cc405daeff85f",
+      sourceRevision: "ccby-sha256:4808b5b03e1a8c9147c12a1a6b5bcf202079b7b3984fe53dd98cc405daeff85f;pt-adaptation:2026-09-11",
       attribution: localized(
         "Esta obra é baseada no Fate Space Toolkit SRD, produto da Evil Hat Productions, LLC, desenvolvido, escrito e editado por Bill White, C. W. Marshall, Joshua A. C. Newman, Mikki Kendall, Mike Olson, Joshua Yearsley e Anna Meade, e licenciado sob Creative Commons Atribuição 3.0 Não Adaptada.",
         "This work is based on the Fate Space Toolkit SRD, a product of Evil Hat Productions, LLC, developed, authored, and edited by Bill White, C. W. Marshall, Joshua A. C. Newman, Mikki Kendall, Mike Olson, Joshua Yearsley, and Anna Meade. It is licensed for our use under the Creative Commons Attribution 3.0 Unported license.",
@@ -5237,13 +5263,13 @@ const data = {
         "Tools for respectful disability representation in Fate, competent characters, adaptive devices, scene guidance, and accessible tables.",
       ),
       contentNote: localized(
-        "SRD oficial aberto completo no inglês original, sem tradução automática, acompanhado por um mapa editorial bilíngue da edição revisada.",
-        "Complete open official SRD in English, accompanied by a bilingual editorial map of the revised edition.",
+        "SRD aberto integral nos dois modos: original oficial em inglês e adaptação completa em português, acompanhado por um mapa editorial bilíngue da edição revisada.",
+        "Complete open SRD in both modes: the official English original and a full Portuguese adaptation, accompanied by a bilingual editorial map of the revised edition.",
       ),
       officialUrl: "https://evilhat.com/product/fate-accessibility-toolkit/",
       referenceUrl: localized("https://fate-srd.com/fate-accessibility-toolkit", "https://fate-srd.com/fate-accessibility-toolkit"),
       licenseUrl: "https://creativecommons.org/licenses/by/3.0/",
-      sourceRevision: "ccby-sha256:5e1c413086f232dceecbec45cff40de9aa5c493e7801871f941541aef4404f3b",
+      sourceRevision: "ccby-sha256:5e1c413086f232dceecbec45cff40de9aa5c493e7801871f941541aef4404f3b;pt-adaptation:2026-09-11",
       attribution: localized(
         "Esta obra é baseada no Fate Accessibility Toolkit SRD, produto da Evil Hat Productions, LLC, desenvolvido, escrito e editado por Elsa Sjunneson, Lillian Cohen-Moore, Philippe-Antoine Ménard, Clark Valentine, Zeph Wibby, Mysty Vander, ASL For RPG, Amanda Valentine, Ruth Tillman, Sophie Lagacé e Jaydot Sloane, e licenciado sob Creative Commons Atribuição 3.0 Não Adaptada. A edição revisada fora do SRD permanece no mapa editorial ou na biblioteca privada da Mesa.",
         "This work is based on the Fate Accessibility Toolkit SRD, a product of Evil Hat Productions, LLC, developed, authored, and edited by Elsa Sjunneson, Lillian Cohen-Moore, Philippe-Antoine Ménard, Clark Valentine, Zeph Wibby, Mysty Vander, ASL For RPG, Amanda Valentine, Ruth Tillman, Sophie Lagacé, and Jaydot Sloane. It is licensed for our use under the Creative Commons Attribution 3.0 Unported license. Revised-edition text outside the SRD remains in the editorial map or the table's private library.",
@@ -5281,6 +5307,55 @@ const data = {
     },
   ],
 };
+
+function canonicalizePortugueseMode(value) {
+  return value
+    .replace(/\bauto-compels\b/gi, "auto-forçadas")
+    .replace(/\bcompels\b/gi, (term) => /^[A-Z]/.test(term) ? "Forçadas" : "forçadas")
+    .replace(/\bcompel\b/gi, (term) => /^[A-Z]/.test(term) ? "Forçada" : "forçada")
+    .replace(/\bplaysheets\b/gi, "fichas de arquétipo")
+    .replace(/\bplaysheet\b/gi, "ficha de arquétipo")
+    .replace(/\bendgames\b/gi, "desfechos")
+    .replace(/\bendgame\b/gi, "desfecho")
+    .replace(/\bNPCs\b/g, "PdNs")
+    .replace(/\bNPC\b/g, "PdN")
+    .replace(/\bPCs\b/g, "PJs")
+    .replace(/\bPC\b/g, "PJ")
+    .replace(/\bGMs\b/g, "Narradores")
+    .replace(/\bGM\b/g, "Narrador")
+    .replace(/\bpools\b/gi, "reservas")
+    .replace(/\bpool\b/gi, "reserva")
+    .replace(/\bDoom\b/g, "Desgraça")
+    .replace(/\bdoom\b/g, "desgraça")
+    .replace(/\bRoll Provocar\b/g, "Role Provocar")
+    .replace(/\brolls\b/gi, "rolagens")
+    .replace(/\broll\b/gi, "rolagem")
+    .replace(/\bMilestones\b/g, "Marcos")
+    .replace(/\bmilestones\b/g, "marcos")
+    .replace(/\bStress\b/g, "Estresse")
+    .replace(/\bRefresh\b/g, "Recarga")
+    .replace(/\bBargain aspects\b/gi, "Aspectos de Barganha")
+    .replace(/\bLeverage\b/g, "Influência")
+    .replace(/\bseu forçada\b/gi, "sua forçada")
+    .replace(/\bcada forçada aceito\b/gi, "cada forçada aceita");
+}
+
+function normalizePortuguesePairs(value) {
+  if (Array.isArray(value)) {
+    value.forEach(normalizePortuguesePairs);
+    return;
+  }
+  if (!value || typeof value !== "object") return;
+  for (const [key, nested] of Object.entries(value)) {
+    if (key === "pt" && typeof nested === "string") {
+      value[key] = canonicalizePortugueseMode(nested);
+    } else {
+      normalizePortuguesePairs(nested);
+    }
+  }
+}
+
+normalizePortuguesePairs(data);
 
 await writeFile(outputPath, JSON.stringify(data));
 console.log(

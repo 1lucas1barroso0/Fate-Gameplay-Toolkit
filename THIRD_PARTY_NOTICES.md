@@ -14,7 +14,7 @@ A versão em português é baseada no Fate Condensado traduzido pela comunidade 
 
 Os textos abertos em inglês são derivados dos SRDs oficiais reconhecidos pela Evil Hat sob Creative Commons Attribution 3.0 Unported. Fate Core, Fate Accelerated, Fate Adversary Toolkit, Fate System Toolkit, Venture City, Fate Horror Toolkit, Fate Space Toolkit e Fate Accessibility Toolkit estão incorporados integralmente dentro do escopo de seus respectivos SRDs.
 
-Fate Core, Fate Accelerated, Fate Adversary Toolkit e Fate System Toolkit também possuem texto integral em português nesta ferramenta. Quando ainda não há uma tradução aberta incorporada, a interface preserva o SRD completo em inglês, identifica o idioma claramente e não aplica tradução automática. Os mapas editoriais bilíngues continuam separados dos textos oficiais.
+Fate Core, Fate Accelerated, Fate Adversary Toolkit e Fate System Toolkit possuem texto integral em português proveniente de traduções abertas identificadas nas respectivas fontes. Venture City, Fate Horror Toolkit, Fate Space Toolkit e Fate Accessibility Toolkit possuem, nesta ferramenta, adaptações integrais em português produzidas a partir dos SRDs abertos em inglês e revisadas conforme o glossário canônico do projeto; essas quatro adaptações não são traduções oficiais. Em todos os casos, o seletor mantém o texto original em inglês separado do modo português. Os mapas editoriais bilíngues continuam separados dos textos dos SRDs.
 
 - [Fate Core SRD](https://fate-srd.com/fate-core)
 - [Fate Accelerated SRD](https://fate-srd.com/fate-accelerated)

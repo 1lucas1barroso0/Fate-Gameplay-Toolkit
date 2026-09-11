@@ -1927,12 +1927,46 @@ select,
 
 .rule-prose a:hover { color: var(--foreground); }
 .rule-prose .rule-url {
-  display: inline-block;
+  display: inline;
   max-width: 100%;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
-.rule-nowrap { white-space: nowrap; }
+.rule-prose,
+.rule-prose > *,
+.rule-prose blockquote,
+.rule-prose aside,
+.rule-prose figure,
+.rule-prose figcaption,
+.rule-prose p,
+.rule-prose li,
+.rule-prose dt,
+.rule-prose dd {
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.rule-prose blockquote,
+.rule-prose aside,
+.rule-prose figcaption,
+.rule-prose p,
+.rule-prose li,
+.rule-prose dt,
+.rule-prose dd {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+
+.rule-prose blockquote,
+.rule-prose aside,
+.rule-prose figure { width: min(100%, 72ch); }
+
+.rule-prose blockquote > p,
+.rule-prose aside > p,
+.rule-prose figure > p { width: 100%; max-width: none; }
 
 .rule-prose .rule-index-list {
   display: grid;
@@ -2065,6 +2099,5 @@ select,
   .rule-prose h2 { margin-top: 2.7rem; }
   .rule-prose .rule-definition-grid,
   .rule-prose .rule-table-cluster { grid-template-columns: 1fr; }
-  .rule-prose .rule-url { white-space: normal; overflow-wrap: anywhere; }
   .rule-prose .rule-table-scroll { width: 100%; }
 }

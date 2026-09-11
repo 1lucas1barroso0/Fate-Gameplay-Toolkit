@@ -115,11 +115,5 @@ export function prepareRuleHtml(html: string, language: Language) {
   prepared = decorateDefinitionRuns(prepared);
   prepared = simplifyVisibleUrls(prepared);
 
-  return prepared
-    .replace(
-      /(<(code|kbd)\b[^>]*>[\s\S]*?<\/\2>)\s*([,.;:!?])/gi,
-      '<span class="rule-nowrap">$1$3</span>',
-    )
-    .replace(/[ \t]{2,}/g, " ")
-    .trim();
+  return prepared.replace(/[ \t]{2,}/g, " ").trim();
 }
