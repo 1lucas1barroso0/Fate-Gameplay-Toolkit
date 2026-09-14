@@ -173,7 +173,7 @@ export function CharacterSheet({ store, tableConfig, rulesProfiles, activeRulesP
   return (
     <section className="workspace-panel sheet-workspace" aria-labelledby="sheet-heading">
       <header className="workspace-toolbar sheet-toolbar">
-        <h1 id="sheet-heading" className="sr-only">{character.name || "Ficha sem nome"}</h1>
+        <div className="sheet-workspace-title"><p className="eyebrow">Seu elenco, seu mundo</p><h1 id="sheet-heading">Fichas</h1></div>
         <div className="toolbar-actions sheet-toolbar-actions">
           <Select value={store.activeId} onValueChange={store.setActiveId}><SelectTrigger className="character-picker" aria-label="Escolher Ficha"><SelectValue /></SelectTrigger><SelectContent>{store.characters.map((item) => <SelectItem key={item.id} value={item.id}>{item.name || "Sem nome"}</SelectItem>)}</SelectContent></Select>
           <div className="sheet-mode-switch" role="group" aria-label="Modo da Ficha"><Button type="button" size="sm" variant={mode === "edit" ? "default" : "ghost"} aria-pressed={mode === "edit"} onClick={() => changeMode("edit")}><Pencil /> Editar</Button><Button type="button" size="sm" variant={mode === "view" ? "default" : "ghost"} aria-pressed={mode === "view"} onClick={() => changeMode("view")}><Eye /> Visualizar</Button></div>
@@ -217,7 +217,7 @@ export function CharacterSheet({ store, tableConfig, rulesProfiles, activeRulesP
       {mode === "view" ? <SheetView character={character} tableConfig={tableConfig} /> : <div className="sheet-editor">
         {tableConfig.createDuringPlay && <aside className="friendly-note"><Sparkles aria-hidden="true" /><p><b>Pode começar pequeno.</b> Nome, conceito e um ponto forte já bastam. Complete a Ficha quando a história pedir.</p></aside>}
 
-        <section className="sheet-identity-editor">
+        <section className="sheet-identity-editor" data-has-image={Boolean(character.optional.image)}>
           <SheetImage image={character.optional.image} name={character.name} shape={structure.imageShape} editable onChange={(image) => changeOptional({ image })} />
           <div className="sheet-identity-fields"><Label className="field-stack"><span>{structure.labels.name}</span><Textarea className="sheet-name-field" value={character.name} maxLength={240} rows={1} onChange={(event) => store.updateActive((current) => ({ ...current, name: event.target.value }))} /></Label><Label className="field-stack"><span>{structure.labels.description}</span><Textarea value={character.description} maxLength={8000} rows={4} onChange={(event) => store.updateActive((current) => ({ ...current, description: event.target.value }))} /></Label></div>
         </section>

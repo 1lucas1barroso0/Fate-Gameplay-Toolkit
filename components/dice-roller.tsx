@@ -221,6 +221,11 @@ export function DiceRoller({
         </section>
 
         <aside className="probability-panel" aria-label="Chances do total natural em 4dF">
+          <header className="probability-heading">
+            <p className="eyebrow">Cada resultado tem sua chance</p>
+            <h2>O que os dados podem contar</h2>
+            <p>Distribuição dos quatro dados, antes do bônus.</p>
+          </header>
           <div className="probability-bars">
             {FATE_PROBABILITIES_DESCENDING.map(({ total, ways }) => (
               <div key={total}>

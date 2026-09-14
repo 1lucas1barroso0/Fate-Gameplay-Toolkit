@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { BookOpen, Download, ExternalLink, FileText, FileUp, Loader2, LockKeyhole, Search, Send, Settings2, Sparkles, Trash2, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, BookOpen, ChevronDown, Download, ExternalLink, FileText, FileUp, Loader2, LockKeyhole, Search, Send, Settings2, Sparkles, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import rulesData from "@/content/rules.json";
 import expansionData from "@/content/expansions.json";
@@ -129,6 +129,14 @@ const interfaceCopy = {
     heading: "Central de Regras",
     introduction: "Comece com o livro. Mude só o que ajudar a mesa.",
     languageAria: "Idioma das regras",
+    browseBooks: "Escolher outro livro",
+    readingNow: "Na sua leitura",
+    chapterPosition: (index: number, total: number) => `Capítulo ${index} de ${total}`,
+    readingTime: (minutes: number) => `${minutes} min de leitura`,
+    previousChapter: "Capítulo anterior",
+    nextChapter: "Próximo capítulo",
+    privateBooks: "PDFs da sua Mesa",
+    searchPlaceholder: "Busque uma regra, um termo ou uma ideia…",
     quick: "Resumo rápido",
     quickDescription: "O essencial do Fate Condensado para consultar durante a sessão.",
     profileDefault: "Fate Condensado como está no livro",
@@ -191,6 +199,14 @@ const interfaceCopy = {
     heading: "Rules Library",
     introduction: "Start with the book. Change only what helps the table.",
     languageAria: "Rules language",
+    browseBooks: "Choose another book",
+    readingNow: "Now reading",
+    chapterPosition: (index: number, total: number) => `Chapter ${index} of ${total}`,
+    readingTime: (minutes: number) => `${minutes} min read`,
+    previousChapter: "Previous chapter",
+    nextChapter: "Next chapter",
+    privateBooks: "Your Table’s PDFs",
+    searchPlaceholder: "Find a rule, a term, or an idea…",
     quick: "Quick reference",
     quickDescription: "The essentials of Fate Condensed for reference during play.",
     profileDefault: "Fate Condensed as written",
@@ -532,6 +548,7 @@ export function RulesLibrary({
   const [query, setQuery] = React.useState("");
   const deferredQuery = React.useDeferredValue(query);
   const pendingAnchor = React.useRef<string | null>(null);
+  const catalogRef = React.useRef<HTMLDetailsElement>(null);
   const [sharing, setSharing] = React.useState(false);
   const contextualRules = getContextRules(tableConfig, "rules");
   const copy = interfaceCopy[language];
@@ -591,6 +608,10 @@ export function RulesLibrary({
 
   const currentSource = sources.find((source) => source.id === sourceId) ?? sources[0];
   const current = currentSource.chapters.find((chapter) => chapter.id === chapterId) ?? currentSource.chapters[0];
+  const currentIndex = currentSource.chapters.findIndex((chapter) => chapter.id === current.id);
+  const previousChapter = currentSource.chapters[currentIndex - 1];
+  const nextChapter = currentSource.chapters[currentIndex + 1];
+  const readingMinutes = React.useMemo(() => Math.max(1, Math.ceil(stripHtml(current.html[language]).split(/\s+/).filter(Boolean).length / 220)), [current, language]);
   const currentHtml = React.useMemo(
     () => prepareRuleHtml(current.html[language], language),
     [current, language],
@@ -650,7 +671,7 @@ export function RulesLibrary({
     if (!pendingAnchor.current) return;
     const anchor = pendingAnchor.current;
     pendingAnchor.current = null;
-    window.requestAnimationFrame(() => document.getElementById(anchor)?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    window.requestAnimationFrame(() => document.getElementById(anchor)?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth", block: "start" }));
   }, [chapterId, language, sourceId]);
 
   React.useEffect(() => {
@@ -671,17 +692,32 @@ export function RulesLibrary({
     return () => window.clearTimeout(handle);
   }, [openReference, sources]);
 
+  const focusReader = () => {
+    window.requestAnimationFrame(() => {
+      const reader = document.getElementById("rule-reader");
+      reader?.focus({ preventScroll: true });
+      reader?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth", block: "start" });
+    });
+  };
+
+  const chooseChapter = (id: string) => {
+    setChapterId(id);
+    focusReader();
+  };
+
   const chooseSource = (nextSource: ReaderSource) => {
+    if (catalogRef.current) catalogRef.current.open = false;
     setSourceId(nextSource.id);
     setChapterId(nextSource.chapters[0].id);
     setQuery("");
+    focusReader();
   };
 
   const chooseResult = (source: ReaderSource, chapter: ReaderChapter) => {
     setSourceId(source.id);
     setChapterId(chapter.id);
     setQuery("");
-    window.requestAnimationFrame(() => document.getElementById("rule-reader")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    focusReader();
   };
 
   const openCondensedOptions = () => {
@@ -727,7 +763,7 @@ export function RulesLibrary({
       event.preventDefault();
       if (hash) pendingAnchor.current = hash;
       if (destination) setChapterId(destination.id);
-      else if (hash) document.getElementById(hash)?.scrollIntoView({ behavior: "smooth", block: "start" });
+      else if (hash) document.getElementById(hash)?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth", block: "start" });
     }
   };
 
@@ -773,9 +809,14 @@ export function RulesLibrary({
         </div>
       </div>
 
-      <PrivateTableLibrary language={language} store={roomStore} onOpenRooms={onOpenRooms} />
 
-      <section className="rule-source-catalog" aria-labelledby="rule-sources-heading">
+      <details className="rule-source-catalog" ref={catalogRef}>
+        <summary className="library-book-selector">
+          <span className="library-book-icon" aria-hidden="true"><BookOpen /></span>
+          <span className="library-book-current"><small>{copy.readingNow}</small><b>{localized(currentSource.title, language)}</b></span>
+          <span className="library-book-change">{copy.browseBooks} <ChevronDown aria-hidden="true" /></span>
+        </summary>
+        <div className="library-catalog-body">
         <header className="rule-source-catalog-header">
           <div className="rule-source-catalog-title">
             <p className="eyebrow">{copy.libraryEyebrow}</p>
@@ -784,15 +825,17 @@ export function RulesLibrary({
           <p className="rule-source-catalog-principle">{localized(expansions.precedence, language)}</p>
         </header>
         <div className="rule-source-list">
-          {sources.map((source) => (
+          {sources.map((source, index) => (
             <button
               className={source.kind === "principal" ? "rule-source-choice is-principal" : "rule-source-choice"}
               data-active={source.id === currentSource.id}
+              data-source={source.id}
               key={source.id}
               type="button"
               aria-pressed={source.id === currentSource.id}
               onClick={() => chooseSource(source)}
             >
+              <span className="book-edition-line" aria-hidden="true"><span>{String(index + 1).padStart(2, "0")}</span><BookOpen /></span>
               <span className="rule-source-choice-top">
                 <b>{localized(source.title, language)}</b>
                 <time dateTime={String(source.year)}>{source.year}</time>
@@ -804,22 +847,10 @@ export function RulesLibrary({
             </button>
           ))}
         </div>
-      </section>
+        </div>
+      </details>
 
-      <aside className="license-note" aria-label={copy.sourceCredits}>
-        <div>
-          <p className="eyebrow">{copy.selectedSource}</p>
-          <h2>{localized(currentSource.title, language)}</h2>
-          <p>{localized(currentSource.contentNote, language)}</p>
-        </div>
-        {currentSource.attribution[language].map((paragraph, index) => <p key={index}>{paragraph}</p>)}
-        <div className="rule-source-links">
-          <a href={currentSource.officialUrl} target="_blank" rel="noreferrer">{copy.officialBook} <ExternalLink /></a>
-          <a href={localized(currentSource.referenceUrl, language)} target="_blank" rel="noreferrer">{copy.officialReference} <ExternalLink /></a>
-          {currentSource.errataUrl && <a href={currentSource.errataUrl} target="_blank" rel="noreferrer">{copy.officialErrata} <ExternalLink /></a>}
-          <a href={currentSource.licenseUrl} target="_blank" rel="noreferrer">{copy.licenseAndUse} <ExternalLink /></a>
-        </div>
-      </aside>
+
 
       {tableConfig.customRules.some((rule) => rule.enabled && rule.scopes.includes("rules")) && (
         <aside className="house-rules-reference" aria-label={copy.customRulesAria}>
@@ -830,7 +861,7 @@ export function RulesLibrary({
 
       <div className="rule-search-wrap">
         <Search aria-hidden="true" />
-        <Input value={query} onChange={(event) => setQuery(event.target.value)} aria-label={copy.searchAria} />
+        <Input value={query} onChange={(event) => setQuery(event.target.value)} aria-label={copy.searchAria} placeholder={copy.searchPlaceholder} />
         {query && <Button variant="ghost" size="icon-sm" onClick={() => setQuery("")} aria-label={copy.clearSearch}><X /></Button>}
       </div>
 
@@ -857,7 +888,7 @@ export function RulesLibrary({
         <NativeSelect
           id="rule-chapter-select"
           value={current.id}
-          onChange={(event) => setChapterId(event.target.value)}
+          onChange={(event) => chooseChapter(event.target.value)}
           aria-label={copy.chooseChapter}
         >
           {currentSource.chapters.map((chapter) => (
@@ -870,15 +901,16 @@ export function RulesLibrary({
 
       <div className="rules-layout">
         <nav className="chapter-nav" aria-label={copy.chapters}>
+          <div className="chapter-nav-heading"><BookOpen aria-hidden="true" /><span>{copy.chapters}</span><small>{currentSource.chapters.length}</small></div>
           {currentSource.chapters.map((chapter, index) => (
-            <button key={chapter.id} type="button" aria-current={chapter.id === current.id ? "page" : undefined} onClick={() => setChapterId(chapter.id)}>
+            <button key={chapter.id} type="button" aria-current={chapter.id === current.id ? "page" : undefined} onClick={() => chooseChapter(chapter.id)}>
               <span>{String(index + 1).padStart(2, "0")}</span>
               {localized(chapter.title, language)}
             </button>
           ))}
         </nav>
 
-        <article id="rule-reader" className="rule-reader">
+        <article id="rule-reader" className="rule-reader" lang={language === "pt" ? "pt-BR" : "en"} tabIndex={-1}>
           <header>
             <div>
               <p>{localized(currentSource.shortTitle, language)} · {localized(current.label, language)}</p>
@@ -894,13 +926,39 @@ export function RulesLibrary({
               </Button>
             )}
           </header>
+          <div className="reading-status"><span>{copy.chapterPosition(currentIndex + 1, currentSource.chapters.length)}</span><span>{copy.readingTime(readingMinutes)}</span></div>
           <div className="rule-prose" onClick={followRuleLink} dangerouslySetInnerHTML={{ __html: currentHtml }} />
+          <nav className="reader-pagination" aria-label={copy.chapters}>
+            {previousChapter ? <button type="button" onClick={() => chooseChapter(previousChapter.id)}><ArrowLeft aria-hidden="true" /><span><small>{copy.previousChapter}</small><b>{localized(previousChapter.title, language)}</b></span></button> : <span />}
+            {nextChapter ? <button type="button" onClick={() => chooseChapter(nextChapter.id)}><span><small>{copy.nextChapter}</small><b>{localized(nextChapter.title, language)}</b></span><ArrowRight aria-hidden="true" /></button> : <span />}
+          </nav>
+      <details className="license-note reader-credits">
+        <summary>{copy.sourceCredits}<ChevronDown aria-hidden="true" /></summary>
+        <div className="reader-credits-body">
+        <div>
+          <p className="eyebrow">{copy.selectedSource}</p>
+          <h2>{localized(currentSource.title, language)}</h2>
+          <p>{localized(currentSource.contentNote, language)}</p>
+        </div>
+        {currentSource.attribution[language].map((paragraph, index) => <p key={index}>{paragraph}</p>)}
+        <div className="rule-source-links">
+          <a href={currentSource.officialUrl} target="_blank" rel="noreferrer">{copy.officialBook} <ExternalLink /></a>
+          <a href={localized(currentSource.referenceUrl, language)} target="_blank" rel="noreferrer">{copy.officialReference} <ExternalLink /></a>
+          {currentSource.errataUrl && <a href={currentSource.errataUrl} target="_blank" rel="noreferrer">{copy.officialErrata} <ExternalLink /></a>}
+          <a href={currentSource.licenseUrl} target="_blank" rel="noreferrer">{copy.licenseAndUse} <ExternalLink /></a>
+        </div>
+        </div>
+      </details>
           <footer className="rule-sources">
             <a href={localized(currentSource.referenceUrl, language)} target="_blank" rel="noreferrer">{copy.checkSource} <ExternalLink /></a>
             <a href={currentSource.officialUrl} target="_blank" rel="noreferrer">{copy.seeBook} <ExternalLink /></a>
           </footer>
         </article>
       </div>
+      <details className="private-library-disclosure">
+        <summary><LockKeyhole aria-hidden="true" /><span>{copy.privateBooks}</span><ChevronDown aria-hidden="true" /></summary>
+        <PrivateTableLibrary language={language} store={roomStore} onOpenRooms={onOpenRooms} />
+      </details>
     </section>
   );
 }

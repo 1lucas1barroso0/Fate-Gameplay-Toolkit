@@ -185,6 +185,12 @@ function RoomOnboarding({ store, rulesProfiles, activeRulesProfileId, onSelectRu
       )}
 
       <div className="room-onboarding">
+        <div className="room-invitation">
+          <Users aria-hidden="true" />
+          <p className="eyebrow">Juntos, a história vai mais longe</p>
+          <h2>Uma Mesa.<br /> Muitas possibilidades.</h2>
+          <p>Reúna seu grupo e compartilhe as rolagens, as descobertas e os próximos capítulos.</p>
+        </div>
       <Tabs defaultValue="join">
         <TabsList>
           <TabsTrigger value="join"><DoorOpen /> Entrar como jogador</TabsTrigger>

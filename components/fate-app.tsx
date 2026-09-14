@@ -46,7 +46,7 @@ export function FateApp() {
     } catch {
       toast.info("A área foi aberta, mas o navegador não conseguiu lembrar esta preferência.");
     }
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    window.scrollTo({ top: 0, behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth" });
   };
 
   const openSharedRule = (reference: string) => {
@@ -117,12 +117,16 @@ export function FateApp() {
   }, [getProfile, savedRooms, selectProfile, session, workspace]);
 
   return (
-    <div className="app-shell">
+    <div className="app-shell" data-workspace={workspace}>
       <a className="skip-link" href="#workspace-content">Pular para o conteúdo</a>
       <header className="app-header">
         <div className="brand-lockup" aria-label="Fate Gameplay Toolkit">
           <FateMark className="app-mark" />
           <span><span className="brand-title"><b>Fate</b><strong>Gameplay Toolkit</strong></span><small>Fichas, regras e mesas do seu jeito</small></span>
+        </div>
+      <div className="brand-story" aria-hidden="true">
+          <span>Uma ideia.<br /><b>Infinitas histórias.</b></span>
+          <div className="brand-dice"><i>+</i><i>−</i><i>0</i><i>+</i></div>
         </div>
       </header>
 
