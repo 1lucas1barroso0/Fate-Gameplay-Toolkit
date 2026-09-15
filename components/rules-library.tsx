@@ -1,11 +1,12 @@
 "use client";
 
 import * as React from "react";
-import { ArrowLeft, ArrowRight, BookOpen, ChevronDown, Download, ExternalLink, FileText, FileUp, Loader2, LockKeyhole, Search, Send, Settings2, Sparkles, Trash2, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, BookOpen, Bookmark, Check, ChevronDown, Download, ExternalLink, FileText, FileUp, Link2, List, Loader2, LockKeyhole, Search, Send, Settings2, Sparkles, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
-import rulesData from "@/content/rules.json";
-import expansionData from "@/content/expansions.json";
-import terminologyData from "@/content/fate-terminology.json";
+import { DEFAULT_READING, bookSearchDocuments, EMPTY_SEARCH, loadBook, loadSearch, normalizeSearch, readerCatalog, readingFromHash, readingHash, readingKey, searchChapters, type BookText, type Localized, type ReaderChapter, type ReaderLocation, type ReaderSource, type SearchDocument } from "@/lib/reader-library";
+import { mergeReading, parseReading, rememberReading, toggleBookmark } from "@/lib/reading-state";
+import { updateReading, useReadingState } from "@/lib/use-reading-state";
+import { readerSections } from "@/lib/reader-sections";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -19,105 +20,14 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { ADJECTIVE_LADDER, stripHtml, type Language } from "@/lib/fate";
+import { ADJECTIVE_LADDER, safeJsonDownload, type Language } from "@/lib/fate";
 import { MAX_ROOM_FILES_PER_UPLOAD, type RoomEntry, type RoomFileData } from "@/lib/room-contracts";
 import { prepareRuleHtml } from "@/lib/rule-content";
 import { getContextRules, type TableConfig } from "@/lib/table-config";
 import { formatStorageBytes } from "@/lib/storage-policy";
 import type { RoomStore } from "@/lib/use-room";
 
-type Localized = { pt: string; en: string };
-type LocalizedList = { pt: string[]; en: string[] };
-
-type RuleChapter = {
-  id: string;
-  slugs: { pt: string; en: string };
-  title: Localized;
-  html: { pt: string; en: string };
-};
-
-type ExpansionChapter = {
-  id: string;
-  title: Localized;
-  label: Localized;
-  mode: "full-srd" | "official-guide-summary" | "book-map" | "editorial-summary";
-  html: Localized;
-};
-
-type ExpansionSource = {
-  id: string;
-  title: Localized;
-  shortTitle: Localized;
-  year: number;
-  kind: "guide" | "expansion";
-  tags: Localized[];
-  description: Localized;
-  contentNote: Localized;
-  officialUrl: string;
-  referenceUrl: Localized;
-  licenseUrl: string;
-  errataUrl?: string;
-  attribution: Localized;
-  chapters: ExpansionChapter[];
-  wordCount: number;
-  wordCountByLanguage: { pt: number; en: number };
-};
-
-type ExpansionBundle = {
-  version: string;
-  precedence: Localized;
-  sources: ExpansionSource[];
-};
-
-type ReaderChapter = {
-  id: string;
-  title: Localized;
-  label: Localized;
-  mode: "principal" | ExpansionChapter["mode"];
-  html: Localized;
-  slugs?: { pt: string; en: string };
-};
-
-type ReaderSource = {
-  id: string;
-  title: Localized;
-  shortTitle: Localized;
-  year: number;
-  kind: "principal" | "guide" | "expansion";
-  tags: Localized[];
-  description: Localized;
-  contentNote: Localized;
-  officialUrl: string;
-  referenceUrl: Localized;
-  licenseUrl: string;
-  errataUrl?: string;
-  attribution: LocalizedList;
-  chapters: ReaderChapter[];
-  wordCount: number;
-};
-
-type SearchResult = {
-  source: ReaderSource;
-  chapter: ReaderChapter;
-  snippet: string;
-};
-
-const chapters = rulesData as RuleChapter[];
-const expansions = expansionData as ExpansionBundle;
-const terminology = terminologyData as {
-  terms: { canonical: Localized; aliases: { pt: string[]; en: string[] } }[];
-};
-
-const condensedAttribution: LocalizedList = {
-  pt: [
-    "Esta obra é baseada em Fate Condensado, traduzido pela comunidade e fãs, desenvolvido e editado por Estevan Fernandes Queiroz e licenciado para uso sob Creative Commons Atribuição 4.0 Internacional. Versão original: Fate Condensed © Evil Hat Productions, LLC. Documento de Referência do Sistema produzido por Estevan Fernandes Queiroz.",
-    "Fate Condensed ©2020 Evil Hat Productions, LLC. Fate™ é uma marca da Evil Hat Productions, LLC.",
-  ],
-  en: [
-    "This work is based on Fate Condensed, a product of Evil Hat Productions, LLC, developed, authored, and edited by PK Sullivan, Lara Turner, Leonard Balsera, Fred Hicks, Richard Bellingham, Robert Hanz, Ryan Macklin, and Sophie Lagacé, and licensed for our use under the Creative Commons Attribution 3.0 Unported license.",
-    "Fate Condensed ©2020 Evil Hat Productions, LLC. Fate™ is a trademark of Evil Hat Productions, LLC.",
-  ],
-};
+const sources = readerCatalog.sources;
 
 function localized(value: Localized, language: Language) {
   return value[language];
@@ -156,7 +66,7 @@ const interfaceCopy = {
     ownRules: "Regras do seu jogo",
     tableRule: "Regra da mesa",
     customRulesAria: "Regras próprias desta mesa",
-    searchAria: "Buscar em toda a biblioteca",
+    searchAria: "Buscar regras",
     clearSearch: "Limpar busca",
     noResults: "Nada encontrado com esses termos.",
     result: (count: number) => `${count} ${count === 1 ? "resultado encontrado" : "resultados encontrados"}`,
@@ -226,7 +136,7 @@ const interfaceCopy = {
     ownRules: "Rules for your game",
     tableRule: "Table rule",
     customRulesAria: "This table’s own rules",
-    searchAria: "Search the entire library",
+    searchAria: "Search rules",
     clearSearch: "Clear search",
     noResults: "Nothing found for those terms.",
     result: (count: number) => `${count} ${count === 1 ? "result found" : "results found"}`,
@@ -265,28 +175,6 @@ const interfaceCopy = {
     ladder: "The ladder",
   },
 };
-
-function normalizeSearch(value: string) {
-  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR");
-}
-
-function terminologyAliases(text: string) {
-  const normalizedText = normalizeSearch(text);
-  return terminology.terms.flatMap((term) => {
-    const names = [term.canonical.pt, term.canonical.en, ...term.aliases.pt, ...term.aliases.en];
-    return names.some((name) => normalizedText.includes(normalizeSearch(name))) ? names : [];
-  }).join(" ");
-}
-
-function makeSnippet(text: string, query: string) {
-  const normalized = normalizeSearch(text);
-  const normalizedQuery = normalizeSearch(query);
-  const index = normalized.indexOf(normalizedQuery);
-  if (index < 0) return text.slice(0, 180);
-  const start = Math.max(0, index - 74);
-  const end = Math.min(text.length, index + normalizedQuery.length + 112);
-  return (start > 0 ? "…" : "") + text.slice(start, end) + (end < text.length ? "…" : "");
-}
 
 function chapterModeLabel(chapter: ReaderChapter, language: Language) {
   if (chapter.mode === "principal") return language === "pt" ? "Texto integral" : "Complete text";
@@ -542,191 +430,170 @@ export function RulesLibrary({
   roomStore: RoomStore;
   onOpenRooms?: () => void;
 }) {
-  const [language, setLanguage] = React.useState<Language>("pt");
-  const [sourceId, setSourceId] = React.useState("fate-condensed");
-  const [chapterId, setChapterId] = React.useState(chapters[0].id);
+  const reading = useReadingState();
+  const [location, setLocation] = React.useState<ReaderLocation>(DEFAULT_READING);
+  const { language, sourceId, chapterId } = location;
+  const [initialized, setInitialized] = React.useState(false);
   const [query, setQuery] = React.useState("");
+  const [scope, setScope] = React.useState<"book" | "all">("book");
+  const [resultLimit, setResultLimit] = React.useState(20);
   const deferredQuery = React.useDeferredValue(query);
-  const pendingAnchor = React.useRef<string | null>(null);
-  const catalogRef = React.useRef<HTMLDetailsElement>(null);
+  const [book, setBook] = React.useState<BookText | null>(null);
+  const [bookError, setBookError] = React.useState("");
+  const [allSearch, setAllSearch] = React.useState<{ language: Language; documents: SearchDocument[] } | null>(null);
+  const [searchError, setSearchError] = React.useState(false);
+  const [retry, setRetry] = React.useState(0);
+  const [savedOpen, setSavedOpen] = React.useState(false);
   const [sharing, setSharing] = React.useState(false);
+  const catalogRef = React.useRef<HTMLDetailsElement>(null);
+  const sectionsRef = React.useRef<HTMLDetailsElement>(null);
+  const searchInput = React.useRef<HTMLInputElement>(null);
+  const importInput = React.useRef<HTMLInputElement>(null);
+  const scrollIntent = React.useRef<"restore" | "start">("restore");
+  const visibleAnchor = React.useRef("");
   const contextualRules = getContextRules(tableConfig, "rules");
   const copy = interfaceCopy[language];
-
-  const sources = React.useMemo<ReaderSource[]>(() => {
-    const condensedChapters: ReaderChapter[] = chapters.map((chapter, index) => ({
-      id: chapter.id,
-      title: chapter.title,
-      label: {
-        pt: "Capítulo " + String(index + 1).padStart(2, "0"),
-        en: "Chapter " + String(index + 1).padStart(2, "0"),
-      },
-      mode: "principal",
-      html: chapter.html,
-      slugs: chapter.slugs,
-    }));
-
-    const condensedWords = condensedChapters.reduce(
-      (total, chapter) => total + stripHtml(chapter.html[language]).split(/\s+/).filter(Boolean).length,
-      0,
-    );
-
-    return [
-      {
-        id: "fate-condensed",
-        title: { pt: "Fate Condensado", en: "Fate Condensed" },
-        shortTitle: { pt: "Fate Condensado", en: "Fate Condensed" },
-        year: 2020,
-        kind: "principal",
-        tags: [{ pt: "Oficial", en: "Official" }, { pt: "Principal", en: "Principal" }],
-        description: {
-          pt: "A regra completa, direta e mais recente da linha Core. É sempre a base deste site.",
-          en: "The complete, direct, and most recent ruleset in the Core line. It is always this site's foundation.",
-        },
-        contentNote: {
-          pt: "Texto integral em português e inglês.",
-          en: "Complete text in Portuguese and English.",
-        },
-        officialUrl: "https://evilhat.com/product/fate-condensed/",
-        referenceUrl: {
-          pt: "https://fatesrdbrasil.gitlab.io/fate-srd-brasil/fate-condensado/",
-          en: "https://fate-srd.com/fate-condensed",
-        },
-        licenseUrl: language === "pt"
-          ? "https://creativecommons.org/licenses/by/4.0/"
-          : "https://creativecommons.org/licenses/by/3.0/",
-        attribution: condensedAttribution,
-        chapters: condensedChapters,
-        wordCount: condensedWords,
-      },
-      ...expansions.sources.map((source) => ({
-        ...source,
-        attribution: { pt: [source.attribution.pt], en: [source.attribution.en] },
-      })),
-    ];
-  }, [language]);
-
-  const currentSource = sources.find((source) => source.id === sourceId) ?? sources[0];
-  const current = currentSource.chapters.find((chapter) => chapter.id === chapterId) ?? currentSource.chapters[0];
-  const currentIndex = currentSource.chapters.findIndex((chapter) => chapter.id === current.id);
+  const currentSource = sources.find(source => source.id === sourceId) ?? sources[0];
+  const current = currentSource.chapters.find(chapter => chapter.id === chapterId) ?? currentSource.chapters[0];
+  const currentIndex = currentSource.chapters.findIndex(chapter => chapter.id === current.id);
   const previousChapter = currentSource.chapters[currentIndex - 1];
   const nextChapter = currentSource.chapters[currentIndex + 1];
-  const readingMinutes = React.useMemo(() => Math.max(1, Math.ceil(stripHtml(current.html[language]).split(/\s+/).filter(Boolean).length / 220)), [current, language]);
-  const currentHtml = React.useMemo(
-    () => prepareRuleHtml(current.html[language], language),
-    [current, language],
-  );
-
-  const searchDocuments = React.useMemo(
-    () => sources.flatMap((source) => source.chapters.map((chapter) => {
-      const text = stripHtml(chapter.html[language]);
-      const bilingualText = stripHtml(chapter.html.pt) + " " + stripHtml(chapter.html.en);
-      const searchableText = [
-        source.title.pt,
-        source.title.en,
-        chapter.title.pt,
-        chapter.title.en,
-        bilingualText,
-        terminologyAliases(bilingualText),
-      ].join(" ");
-      return {
-        source,
-        chapter,
-        text,
-        searchable: normalizeSearch(searchableText),
-      };
-    })),
-    [language, sources],
-  );
-
-  const results = React.useMemo<SearchResult[]>(() => {
-    const cleaned = deferredQuery.trim();
-    if (cleaned.length < 2) return [];
-    const normalizedQuery = normalizeSearch(cleaned);
-    const found: SearchResult[] = [];
-
-    for (const document of searchDocuments) {
-      if (document.searchable.includes(normalizedQuery)) {
-        found.push({
-          source: document.source,
-          chapter: document.chapter,
-          snippet: makeSnippet(document.text, cleaned),
-        });
-      }
-      if (found.length >= 60) return found;
-    }
-
-    return found;
-  }, [deferredQuery, searchDocuments]);
-
-  const customResults = React.useMemo(() => {
-    const cleaned = normalizeSearch(deferredQuery.trim());
-    if (cleaned.length < 2) return [];
-    return tableConfig.customRules.filter(
-      (rule) => rule.enabled && normalizeSearch(rule.name + " " + rule.description).includes(cleaned),
-    );
-  }, [deferredQuery, tableConfig.customRules]);
+  const rawHtml = book?.sourceId === sourceId && book.language === language ? book.chapters[current.id] : undefined;
+  const prepared = React.useMemo(() => readerSections(prepareRuleHtml(rawHtml ?? "", language)), [rawHtml, language]);
+  const readingMinutes = Math.max(1, Math.ceil(current.wordCount[language] / 220));
+  const key = readingKey(location);
+  const bookmarked = reading.state.bookmarks.some(item => readingKey(item) === key);
+  const needsSearch = scope === "all" && query.trim().length >= 2;
 
   React.useEffect(() => {
-    if (!pendingAnchor.current) return;
-    const anchor = pendingAnchor.current;
-    pendingAnchor.current = null;
-    window.requestAnimationFrame(() => document.getElementById(anchor)?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth", block: "start" }));
-  }, [chapterId, language, sourceId]);
+    const handle = window.setTimeout(() => {
+      let saved = DEFAULT_READING;
+      try { const raw = localStorage.getItem("fate-gameplay-toolkit.reading.v1"); if (raw) saved = parseReading(JSON.parse(raw)).last; } catch { /* Use the session default without deleting unreadable data. */ }
+      setLocation(readingFromHash(window.location.hash) ?? saved);
+      setInitialized(true);
+    }, 0);
+    const navigate = () => {
+      const target = readingFromHash(window.location.hash);
+      if (target) { scrollIntent.current = "restore"; setLocation(target); }
+    };
+    window.addEventListener("hashchange", navigate);
+    return () => { window.clearTimeout(handle); window.removeEventListener("hashchange", navigate); };
+  }, []);
+
+  React.useEffect(() => {
+    if (!initialized) return;
+    let cancelled = false;
+    loadBook(currentSource, language).then(value => {
+      if (!cancelled) { setBook(value); setBookError(""); }
+    }).catch(() => { if (!cancelled) setBookError(currentSource.id + ":" + language); });
+    return () => { cancelled = true; };
+  }, [currentSource, language, initialized, retry]);
+
+  React.useEffect(() => {
+    if (!needsSearch) return;
+    let cancelled = false;
+    loadSearch(language).then(documents => {
+      if (!cancelled) { setAllSearch({ language, documents }); setSearchError(false); }
+    }).catch(() => { if (!cancelled) setSearchError(true); });
+    return () => { cancelled = true; };
+  }, [needsSearch, language, retry]);
+
+  const bookSearch = React.useMemo(() => bookSearchDocuments(book, sourceId, language), [book, sourceId, language]);
+  const documents = scope === "all" ? allSearch?.language === language ? allSearch.documents : EMPTY_SEARCH : bookSearch;
+  const results = React.useMemo(() => searchChapters(documents, deferredQuery, language), [documents, deferredQuery, language]);
+  const customResults = React.useMemo(() => {
+    const terms = normalizeSearch(deferredQuery.trim()).split(/\s+/);
+    return deferredQuery.trim().length < 2 ? [] : tableConfig.customRules.filter(rule => rule.enabled && terms.every(term => normalizeSearch(rule.name + " " + rule.description).includes(term)));
+  }, [deferredQuery, tableConfig.customRules]);
+
+  // Restore after the selected language has loaded; never display the previous language as a fallback.
+  React.useEffect(() => {
+    if (!initialized || rawHtml === undefined) return;
+    const reader = document.getElementById("rule-reader");
+    const prose = reader?.querySelector<HTMLElement>(".rule-prose");
+    if (!reader || !prose) return;
+    const saved = reading.state.positions[key];
+    const intent = scrollIntent.current;
+    let ready = false;
+    let timer = 0;
+    let lastPosition = saved;
+    const frame = requestAnimationFrame(() => {
+      const anchor = location.anchor || (intent === "restore" ? saved?.anchor : "");
+      const element = anchor ? document.getElementById(anchor) : null;
+      const top = element && prose.contains(element) ? element.getBoundingClientRect().top + window.scrollY + (location.anchor ? 0 : saved?.offset ?? 0) - 110 : reader.getBoundingClientRect().top + window.scrollY - 90;
+      if (intent === "start" || anchor || saved?.progress) window.scrollTo({ top: Math.max(0, top), behavior: "instant" });
+      if (intent === "start" || location.anchor) reader.focus({ preventScroll: true });
+      ready = true;
+      updateReading(state => rememberReading(state, location));
+    });
+    const measure = () => {
+      if (!ready) return;
+      const blocks = Array.from(prose.querySelectorAll<HTMLElement>('[id]'));
+      const visible = blocks.filter(element => element.getBoundingClientRect().top <= 120).at(-1) ?? blocks[0];
+      const rect = prose.getBoundingClientRect();
+      // Do not replace a saved position while the reader is completely below the viewport.
+      if (rect.top > window.innerHeight) return;
+      visibleAnchor.current = visible?.id ?? "";
+      lastPosition = { anchor: visible?.id ?? "", offset: visible ? 110 - visible.getBoundingClientRect().top : 0, progress: Math.max(0, Math.min(1, (110 - rect.top) / Math.max(1, rect.height - window.innerHeight + 110))) };
+      updateReading(state => ({ ...state, positions: { ...state.positions, [key]: lastPosition! } }));
+    };
+    const scroll = () => { window.clearTimeout(timer); timer = window.setTimeout(measure, 450); };
+    const saveBeforeLeaving = () => { window.clearTimeout(timer); measure(); };
+    window.addEventListener("scroll", scroll, { passive: true });
+    window.addEventListener("pagehide", saveBeforeLeaving);
+    return () => { cancelAnimationFrame(frame); window.clearTimeout(timer); window.removeEventListener("scroll", scroll); window.removeEventListener("pagehide", saveBeforeLeaving); if (lastPosition) updateReading(state => ({ ...state, positions: { ...state.positions, [key]: lastPosition } })); };
+    // Position changes are saved by this effect; only navigation/content should restore the viewport.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialized, rawHtml, key, location.anchor]);
+
+  const navigate = (target: ReaderLocation, intent: "restore" | "start" = "start") => {
+    scrollIntent.current = intent;
+    visibleAnchor.current = "";
+    setLocation(target);
+    updateReading(state => rememberReading(state, target));
+    const hash = readingHash(target);
+    if (window.location.hash !== hash) window.history.pushState(null, "", hash);
+    setSavedOpen(false);
+    if (sectionsRef.current) sectionsRef.current.open = false;
+  };
+  const chooseChapter = (id: string) => navigate({ sourceId, chapterId: id, language });
+  const chooseSource = (source: ReaderSource) => {
+    if (catalogRef.current) catalogRef.current.open = false;
+    navigate(reading.state.recent.find(item => item.sourceId === source.id && item.language === language) ?? { sourceId: source.id, chapterId: source.chapters[0].id, language }, "restore");
+    setQuery("");
+  };
+  const chooseResult = (source: ReaderSource, chapter: ReaderChapter) => { navigate({ sourceId: source.id, chapterId: chapter.id, language }); setQuery(""); };
+  const changeLanguage = (next: Language) => navigate({ sourceId, chapterId, language: next }, "restore");
+  const openCondensedOptions = () => navigate({ sourceId: sources[0].id, chapterId: sources[0].chapters.find(chapter => chapter.id === "opcionais")?.id ?? sources[0].chapters[0].id, language });
 
   React.useEffect(() => {
     if (!openReference) return;
     const parts = openReference.split(":");
-    const isLegacy = !sources.some((item) => item.id === parts[1]);
-    const targetSource = isLegacy ? "fate-condensed" : parts[1];
-    const targetChapter = isLegacy ? parts[1] : parts[2];
-    const targetLanguage = isLegacy ? parts[2] : parts[3];
-    const source = sources.find((item) => item.id === targetSource);
-    if (!source || !source.chapters.some((chapter) => chapter.id === targetChapter)) return;
-
-    const handle = window.setTimeout(() => {
-      if (targetLanguage === "pt" || targetLanguage === "en") setLanguage(targetLanguage);
-      setSourceId(source.id);
-      setChapterId(targetChapter);
-    }, 0);
+    const legacy = !sources.some(item => item.id === parts[1]);
+    const hash = readingHash({ sourceId: legacy ? "fate-condensed" : parts[1], chapterId: legacy ? parts[1] : parts[2], language: (legacy ? parts[2] : parts[3]) as Language });
+    const target = readingFromHash(hash);
+    if (!target) return;
+    const handle = window.setTimeout(() => { scrollIntent.current = "start"; setLocation(target); window.history.replaceState(null, "", hash); }, 0);
     return () => window.clearTimeout(handle);
-  }, [openReference, sources]);
+  }, [openReference]);
 
-  const focusReader = () => {
-    window.requestAnimationFrame(() => {
-      const reader = document.getElementById("rule-reader");
-      reader?.focus({ preventScroll: true });
-      reader?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth", block: "start" });
-    });
+  const copyLink = async () => {
+    const target = { ...location, ...(visibleAnchor.current ? { anchor: visibleAnchor.current } : {}) };
+    const url = new URL(window.location.href);
+    url.hash = readingHash(target);
+    try { await navigator.clipboard.writeText(url.href); toast.success(language === "pt" ? "Link da leitura copiado." : "Reading link copied."); }
+    catch { toast.error(language === "pt" ? "Não foi possível copiar. Copie o endereço na barra do navegador." : "Could not copy. Copy the address from your browser’s address bar."); window.history.replaceState(null, "", url); }
   };
-
-  const chooseChapter = (id: string) => {
-    setChapterId(id);
-    focusReader();
+  const importReading = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]; event.target.value = "";
+    if (!file) return;
+    try {
+      if (file.size > 1024 * 1024) throw new Error();
+      const incoming = parseReading(JSON.parse(await file.text()));
+      const saved = updateReading(state => mergeReading(state, incoming));
+      toast[saved ? "success" : "warning"](language === "pt" ? saved ? "Favoritos e posições de leitura importados." : "Importado apenas nesta aba: o navegador não conseguiu salvar." : saved ? "Bookmarks and reading positions imported." : "Imported in this tab only: browser storage is unavailable.");
+    } catch { toast.error(language === "pt" ? "Escolha uma cópia de leitura exportada pela biblioteca (até 1 MB)." : "Choose a reading backup exported by this library (up to 1 MB)."); }
   };
-
-  const chooseSource = (nextSource: ReaderSource) => {
-    if (catalogRef.current) catalogRef.current.open = false;
-    setSourceId(nextSource.id);
-    setChapterId(nextSource.chapters[0].id);
-    setQuery("");
-    focusReader();
-  };
-
-  const chooseResult = (source: ReaderSource, chapter: ReaderChapter) => {
-    setSourceId(source.id);
-    setChapterId(chapter.id);
-    setQuery("");
-    focusReader();
-  };
-
-  const openCondensedOptions = () => {
-    const principal = sources[0];
-    const options = principal.chapters.find((chapter) => chapter.id === "opcionais");
-    setSourceId(principal.id);
-    setChapterId(options?.id ?? principal.chapters[0].id);
-  };
-
   const shareCurrentRule = async () => {
     if (!onShareRule || !roomReady || sharing) return;
     setSharing(true);
@@ -746,25 +613,21 @@ export function RulesLibrary({
   };
 
   const followRuleLink = (event: React.MouseEvent<HTMLDivElement>) => {
-    if (currentSource.id !== "fate-condensed") return;
-    const target = event.target as HTMLElement;
-    const anchor = target.closest("a");
-    if (!anchor) return;
-    const href = anchor.getAttribute("href") ?? "";
-    if (/^https?:\/\//i.test(href) && !href.includes("fate-srd.com/fate-condensed")) return;
-
-    const hash = href.includes("#") ? decodeURIComponent(href.split("#")[1]) : "";
-    const slug = href
-      .replace(/^.*\/fate-condensed\//, "")
-      .replace(/^\.\.\//, "")
-      .split(/[\/#]/)[0];
-    const destination = currentSource.chapters.find((chapter) => chapter.slugs?.[language] === slug);
-    if (destination || href.startsWith("#")) {
-      event.preventDefault();
-      if (hash) pendingAnchor.current = hash;
-      if (destination) setChapterId(destination.id);
-      else if (hash) document.getElementById(hash)?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth", block: "start" });
-    }
+    if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey || event.button !== 0) return;
+    const anchor = (event.target as HTMLElement).closest("a");
+    const href = anchor?.getAttribute("href") ?? "";
+    if (!href) return;
+    try {
+      const url = new URL(href, currentSource.referenceUrl[language]);
+      const hash = decodeURIComponent(url.hash.slice(1));
+      const slug = url.pathname.split('/').filter(Boolean).at(-1);
+      const isSource = url.origin === new URL(currentSource.referenceUrl[language]).origin;
+      const destination = isSource && currentSource.chapters.find(chapter => chapter.slugs?.[language] === slug || chapter.id === slug);
+      if (destination || href.startsWith("#")) {
+        event.preventDefault();
+        navigate({ sourceId, chapterId: destination ? destination.id : chapterId, language, ...(hash ? { anchor: hash } : {}) });
+      }
+    } catch { /* Leave unknown external references to the browser. */ }
   };
 
   return (
@@ -777,8 +640,8 @@ export function RulesLibrary({
         </div>
         <div className="toolbar-actions">
           <div className="language-switch" role="group" aria-label={copy.languageAria}>
-            <Button size="sm" variant={language === "pt" ? "default" : "outline"} aria-pressed={language === "pt"} onClick={() => setLanguage("pt")}>PT-BR</Button>
-            <Button size="sm" variant={language === "en" ? "default" : "outline"} aria-pressed={language === "en"} onClick={() => setLanguage("en")}>English</Button>
+            <Button size="sm" variant={language === "pt" ? "default" : "outline"} aria-pressed={language === "pt"} onClick={() => changeLanguage("pt")}>PT-BR</Button>
+            <Button size="sm" variant={language === "en" ? "default" : "outline"} aria-pressed={language === "en"} onClick={() => changeLanguage("en")}>English</Button>
           </div>
           <Sheet>
             <SheetTrigger asChild><Button variant="outline" size="sm"><BookOpen /> {copy.quick}</Button></SheetTrigger>
@@ -822,7 +685,7 @@ export function RulesLibrary({
             <p className="eyebrow">{copy.libraryEyebrow}</p>
             <h2 id="rule-sources-heading">{copy.libraryHeading}</h2>
           </div>
-          <p className="rule-source-catalog-principle">{localized(expansions.precedence, language)}</p>
+          <p className="rule-source-catalog-principle">{localized(readerCatalog.precedence, language)}</p>
         </header>
         <div className="rule-source-list">
           {sources.map((source, index) => (
@@ -861,25 +724,35 @@ export function RulesLibrary({
 
       <div className="rule-search-wrap">
         <Search aria-hidden="true" />
-        <Input value={query} onChange={(event) => setQuery(event.target.value)} aria-label={copy.searchAria} placeholder={copy.searchPlaceholder} />
+        <Input ref={searchInput} value={query} maxLength={160} onChange={(event) => { setQuery(event.target.value); setResultLimit(20); }} onKeyDown={event => { if (event.key === "Escape") setQuery(""); }} aria-label={copy.searchAria} placeholder={copy.searchPlaceholder} />
         {query && <Button variant="ghost" size="icon-sm" onClick={() => setQuery("")} aria-label={copy.clearSearch}><X /></Button>}
       </div>
 
+      <div className="reader-search-options">
+        <label htmlFor="reader-search-scope">{language === "pt" ? "Buscar em" : "Search in"}</label>
+        <NativeSelect id="reader-search-scope" value={scope} onChange={event => { setScope(event.target.value as "book" | "all"); setResultLimit(20); }}>
+          <NativeSelectOption value="book">{language === "pt" ? "Livro aberto" : "Current book"}</NativeSelectOption>
+          <NativeSelectOption value="all">{language === "pt" ? "Toda a biblioteca" : "Entire library"}</NativeSelectOption>
+        </NativeSelect>
+        <Button variant="ghost" size="sm" onClick={() => setSavedOpen(true)}><Bookmark /> {language === "pt" ? "Minha leitura" : "My reading"}</Button>
+      </div>
       {query.trim().length >= 2 && (
         <div className="rule-search-results" aria-live="polite">
-          <p>{results.length + customResults.length ? copy.result(results.length + customResults.length) : copy.noResults}</p>
+          {(scope === "all" && allSearch?.language !== language) || (scope === "book" && !rawHtml) ? <p role="status">{(scope === "all" && searchError) || bookError === sourceId + ":" + language ? <><span>{language === "pt" ? "A busca não carregou. Confira a conexão." : "Search could not load. Check your connection."}</span> <Button size="sm" variant="outline" onClick={() => setRetry(value => value + 1)}>{language === "pt" ? "Tentar de novo" : "Try again"}</Button></> : <><Loader2 className="animate-spin" /> {language === "pt" ? "Preparando a busca…" : "Preparing search…"}</>}</p> : <p>{results.length + customResults.length ? copy.result(results.length + customResults.length) : copy.noResults}</p>}
           {customResults.map((rule) => (
             <article className="custom-rule-search-hit" key={rule.id}>
               <small>{copy.tableRule}</small><b>{rule.name}</b><span>{rule.description}</span>
             </article>
           ))}
-          {results.map(({ source, chapter, snippet }) => (
-            <button key={source.id + ":" + chapter.id} type="button" onClick={() => chooseResult(source, chapter)}>
+          {results.slice(0, resultLimit).map(hit => {
+            const source = sources.find(item => item.id === hit.sourceId)!;
+            const chapter = source.chapters.find(item => item.id === hit.chapterId)!;
+            return <button key={source.id + ":" + chapter.id} type="button" onClick={() => chooseResult(source, chapter)}>
               <small>{localized(source.shortTitle, language)} · {chapterModeLabel(chapter, language)}</small>
-              <b>{localized(chapter.title, language)}</b>
-              <span>{snippet}</span>
-            </button>
-          ))}
+              <b>{localized(chapter.title, language)}</b><span>{hit.snippet}</span>
+            </button>;
+          })}
+          {results.length > resultLimit && <Button variant="outline" onClick={() => setResultLimit(value => value + 20)}>{language === "pt" ? "Mostrar mais resultados" : "Show more results"}</Button>}
         </div>
       )}
 
@@ -927,7 +800,13 @@ export function RulesLibrary({
             )}
           </header>
           <div className="reading-status"><span>{copy.chapterPosition(currentIndex + 1, currentSource.chapters.length)}</span><span>{copy.readingTime(readingMinutes)}</span></div>
-          <div className="rule-prose" onClick={followRuleLink} dangerouslySetInnerHTML={{ __html: currentHtml }} />
+          <div className="reader-tools">
+            <Button variant="ghost" size="sm" aria-pressed={bookmarked} onClick={() => updateReading(state => toggleBookmark(state, { ...location, ...(visibleAnchor.current ? { anchor: visibleAnchor.current } : {}) }))}>{bookmarked ? <Check /> : <Bookmark />} {language === "pt" ? bookmarked ? "Salvo nos favoritos" : "Salvar favorito" : bookmarked ? "Bookmarked" : "Bookmark"}</Button>
+            <Button variant="ghost" size="sm" onClick={() => void copyLink()}><Link2 /> {language === "pt" ? "Copiar link" : "Copy link"}</Button>
+            {prepared.sections.length > 0 && <details className="reader-sections" ref={sectionsRef}><summary><List /> {language === "pt" ? "Neste capítulo" : "In this chapter"}<ChevronDown /></summary><nav aria-label={language === "pt" ? "Seções deste capítulo" : "Sections in this chapter"}>{prepared.sections.map(section => <a key={section.id} data-level={section.level} href={readingHash({ sourceId, chapterId, language, anchor: section.id })} onClick={event => { if (!event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) { event.preventDefault(); navigate({ sourceId, chapterId, language, anchor: section.id }); } }}>{section.title}</a>)}</nav></details>}
+          </div>
+          {!reading.saved && <p className="reader-state-notice" role="status">{language === "pt" ? "A leitura está guardada só nesta aba. Exporte uma cópia em Minha leitura para preservá-la." : "Reading is saved in this tab only. Export a copy from My reading to keep it."}</p>}
+          {rawHtml === undefined ? <div className="reader-loading" role="status">{bookError === sourceId + ":" + language ? <><p>{language === "pt" ? "Não foi possível abrir este livro. Confira a conexão e tente novamente." : "Could not open this book. Check your connection and try again."}</p><Button variant="outline" onClick={() => setRetry(value => value + 1)}>{language === "pt" ? "Tentar de novo" : "Try again"}</Button></> : <><Loader2 className="animate-spin" /><p>{language === "pt" ? "Abrindo o texto em português…" : "Opening the English text…"}</p></>}</div> : <div className="rule-prose" onClick={followRuleLink} dangerouslySetInnerHTML={{ __html: prepared.html }} />}
           <nav className="reader-pagination" aria-label={copy.chapters}>
             {previousChapter ? <button type="button" onClick={() => chooseChapter(previousChapter.id)}><ArrowLeft aria-hidden="true" /><span><small>{copy.previousChapter}</small><b>{localized(previousChapter.title, language)}</b></span></button> : <span />}
             {nextChapter ? <button type="button" onClick={() => chooseChapter(nextChapter.id)}><span><small>{copy.nextChapter}</small><b>{localized(nextChapter.title, language)}</b></span><ArrowRight aria-hidden="true" /></button> : <span />}
@@ -945,7 +824,7 @@ export function RulesLibrary({
           <a href={currentSource.officialUrl} target="_blank" rel="noreferrer">{copy.officialBook} <ExternalLink /></a>
           <a href={localized(currentSource.referenceUrl, language)} target="_blank" rel="noreferrer">{copy.officialReference} <ExternalLink /></a>
           {currentSource.errataUrl && <a href={currentSource.errataUrl} target="_blank" rel="noreferrer">{copy.officialErrata} <ExternalLink /></a>}
-          <a href={currentSource.licenseUrl} target="_blank" rel="noreferrer">{copy.licenseAndUse} <ExternalLink /></a>
+          <a href={currentSource.licenseUrlByLanguage?.[language] ?? currentSource.licenseUrl} target="_blank" rel="noreferrer">{copy.licenseAndUse} <ExternalLink /></a>
         </div>
         </div>
       </details>
@@ -955,6 +834,20 @@ export function RulesLibrary({
           </footer>
         </article>
       </div>
+      <Dialog open={savedOpen} onOpenChange={setSavedOpen}>
+        <DialogContent className="reading-library-dialog">
+          <DialogHeader><DialogTitle>{language === "pt" ? "Minha leitura" : "My reading"}</DialogTitle><DialogDescription>{language === "pt" ? "Retome seus capítulos e leve seus favoritos para outro dispositivo. A cópia reúne apenas suas marcações de leitura." : "Resume your chapters and take your bookmarks to another device. The backup contains only your reading marks."}</DialogDescription></DialogHeader>
+          <div className="reading-saved-list">
+            {[{ title: language === "pt" ? "Favoritos" : "Bookmarks", items: reading.state.bookmarks }, { title: language === "pt" ? "Última leitura por livro e idioma" : "Last read by book and language", items: reading.state.recent }].map(group => <section key={group.title}><h3>{group.title}</h3>{!group.items.length && <p>{language === "pt" ? "Salve um capítulo usando Salvar favorito." : "Save a chapter using Bookmark."}</p>}{group.items.map(item => {
+              const source = sources.find(source => source.id === item.sourceId)!;
+              const chapter = source.chapters.find(chapter => chapter.id === item.chapterId)!;
+              const progress = reading.state.positions[readingKey(item)]?.progress ?? 0;
+              return <button key={readingKey(item)} type="button" onClick={() => navigate(item, "restore")}><BookOpen /><span><small>{source.shortTitle[language]} · {item.language === "pt" ? "PT-BR" : "English"}</small><b>{chapter.title[language]}</b><small>{Math.round(progress * 100)}% {language === "pt" ? "do capítulo" : "of chapter"}</small></span><ArrowRight /></button>;
+            })}</section>)}
+          </div>
+          <DialogFooter><Button variant="outline" onClick={() => safeJsonDownload("fate-minha-leitura.json", reading.state)}><Download /> {language === "pt" ? "Exportar leitura" : "Export reading"}</Button><Button variant="outline" onClick={() => importInput.current?.click()}><FileUp /> {language === "pt" ? "Importar leitura" : "Import reading"}</Button><input ref={importInput} hidden type="file" accept=".json,application/json" onChange={event => void importReading(event)} /></DialogFooter>
+        </DialogContent>
+      </Dialog>
       <details className="private-library-disclosure">
         <summary><LockKeyhole aria-hidden="true" /><span>{copy.privateBooks}</span><ChevronDown aria-hidden="true" /></summary>
         <PrivateTableLibrary language={language} store={roomStore} onOpenRooms={onOpenRooms} />

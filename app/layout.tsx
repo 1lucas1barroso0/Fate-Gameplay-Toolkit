@@ -3,6 +3,7 @@ import { Barlow_Condensed, Manrope, Source_Serif_4 } from "next/font/google";
 import { Providers } from "@/components/providers";
 import "./globals.css";
 import "./fate-design.css";
+import "./fate-functional.css";
 
 const display = Barlow_Condensed({ subsets: ["latin"], weight: ["600", "700", "800"], variable: "--font-fate-display", display: "swap" });
 const interfaceFont = Manrope({ subsets: ["latin"], variable: "--font-fate-ui", display: "swap" });

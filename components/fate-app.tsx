@@ -31,16 +31,28 @@ export function FateApp() {
   const { profiles, activeProfileId, hydrated: rulesHydrated, getProfile, selectProfile } = tableStore;
 
   React.useEffect(() => {
+    const fromHash = (): Workspace | null => {
+      const value = window.location.hash.slice(1);
+      return value.startsWith("rules/") || value === "regras" ? "regras"
+        : ["ficha", "dados", "salas", "seu-fate"].includes(value) ? value as Workspace : null;
+    };
     const handle = window.setTimeout(() => {
-      const saved = localStorage.getItem("fate-gameplay-toolkit.workspace");
+      let saved: string | null = null;
+      try { saved = localStorage.getItem("fate-gameplay-toolkit.workspace"); } catch { /* Navigation still works without storage. */ }
+      saved = fromHash() ?? saved;
       if (saved === "ficha" || saved === "regras" || saved === "dados" || saved === "salas" || saved === "seu-fate") setWorkspace(saved);
     }, 0);
-    return () => window.clearTimeout(handle);
+    const navigate = () => { const next = fromHash(); if (next) { setRuleTarget(""); setWorkspace(next); } };
+    window.addEventListener("hashchange", navigate);
+    return () => { window.clearTimeout(handle); window.removeEventListener("hashchange", navigate); };
   }, []);
 
   const changeWorkspace = (value: string) => {
     const next = value as Workspace;
     setWorkspace(next);
+    if (next !== "regras") setRuleTarget("");
+    const hash = `#${next}`;
+    if (window.location.hash !== hash) window.history.pushState(null, "", hash);
     try {
       localStorage.setItem("fate-gameplay-toolkit.workspace", next);
     } catch {

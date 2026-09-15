@@ -70,7 +70,7 @@ export const roomEntrySchema = z.discriminatedUnion("type", [
     type: z.literal("rule"),
     requestId,
     title: z.string().trim().min(1).max(180),
-    reference: z.string().regex(/^rules:[a-z0-9-]+:(pt|en)$/).max(160),
+    reference: z.string().regex(/^rules:(?:[a-z0-9-]+:)?[a-z0-9-]+:(pt|en)$/).max(160),
   }),
 ]);
 

@@ -643,14 +643,14 @@ test("mantém busca, compartilhamento e navegação móvel em todas as fontes", 
   ]);
 
   assert.match(library, /Um livro principal\. Expansões quando forem úteis\./);
-  assert.match(library, /sources\.flatMap\(\(source\) => source\.chapters\.map/);
-  assert.match(library, /document\.searchable\.includes\(normalizedQuery\)/);
+  assert.match(library, /bookSearchDocuments/);
+  assert.match(library, /searchChapters/);
   assert.match(library, /React\.useDeferredValue\(query\)/);
-  assert.match(library, /terminologyAliases\(bilingualText\)/);
-  assert.match(library, /normalizeSearch\(searchableText\)/);
+  assert.match(library, /loadSearch\(language\)/);
+  assert.match(library, /normalizeSearch/);
   assert.match(library, /NativeSelect/);
   assert.match(library, /rules:" \+ currentSource\.id \+ ":" \+ current\.id/);
-  assert.match(library, /const isLegacy = !sources\.some\(\(item\) => item\.id === parts\[1\]\)/);
+  assert.match(library, /const legacy = !sources\.some/);
   assert.match(library, /source\.tags\.map/);
   assert.match(library, /<time dateTime=\{String\(source\.year\)\}>\{source\.year\}<\/time>/);
   assert.match(library, /className="rule-source-catalog-header"/);
@@ -658,7 +658,7 @@ test("mantém busca, compartilhamento e navegação móvel em todas as fontes", 
   assert.match(library, /className="private-rule-library"/);
   assert.match(library, /store\.readFile/);
   assert.match(library, /Biblioteca privada da Mesa/);
-  assert.match(library, /current\.html\[language\]/);
+  assert.match(library, /book\.language === language/);
   assert.match(library, /localized\(currentSource\.referenceUrl, language\)/);
   assert.match(library, /<QuickReference language=\{language\}/);
   assert.doesNotMatch(library, /Texto original em inglês/);

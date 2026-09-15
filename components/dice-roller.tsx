@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Dices, Send, Settings2, Shield, Trash2 } from "lucide-react";
+import { Dices, Download, RotateCcw, Send, Settings2, Shield, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,13 +28,14 @@ import {
 import {
   FATE_PROBABILITIES,
   adjectiveFor,
-  createId,
+  safeJsonDownload,
   fateSymbol,
-  rollFateDice,
   type FateCharacter,
   type LocalRoll,
 } from "@/lib/fate";
 import { getContextRules, getSkillDefinitions, type TableConfig } from "@/lib/table-config";
+
+import { createLocalRoll, validRollHistory, outcome, outcomeChances } from "@/lib/roll-tools";
 
 const HISTORY_KEY = "fate-gameplay-toolkit.rolls.v1";
 const FATE_PROBABILITIES_DESCENDING = [...FATE_PROBABILITIES].sort((left, right) => right.total - left.total);
@@ -42,11 +43,7 @@ const FATE_PROBABILITIES_DESCENDING = [...FATE_PROBABILITIES].sort((left, right)
 function readHistory(): LocalRoll[] {
   const raw = localStorage.getItem(HISTORY_KEY);
   if (!raw) return [];
-  const parsed = JSON.parse(raw) as LocalRoll[];
-  if (!Array.isArray(parsed)) return [];
-  return parsed
-    .filter((roll) => Array.isArray(roll.dice) && roll.dice.length === 4 && Number.isInteger(roll.total))
-    .slice(0, 100);
+  return validRollHistory(JSON.parse(raw));
 }
 
 export function DiceRoller({
@@ -62,17 +59,26 @@ export function DiceRoller({
   tableConfig: TableConfig;
   onOpenSettings: () => void;
 }) {
-  const [modifier, setModifier] = React.useState(0);
+  const [manualModifier, setManualModifier] = React.useState(0);
   const [skill, setSkill] = React.useState("manual");
   const [label, setLabel] = React.useState("");
   const [history, setHistory] = React.useState<LocalRoll[]>([]);
   const [rollingRoom, setRollingRoom] = React.useState(false);
   const [fullDefense, setFullDefense] = React.useState(false);
   const [hydrated, setHydrated] = React.useState(false);
+  const [difficulty, setDifficulty] = React.useState(2);
+  const modifierInput = React.useRef<HTMLInputElement>(null);
   const latest = history[0] ?? null;
   const skills = getSkillDefinitions(tableConfig);
   const diceRules = getContextRules(tableConfig, "dice");
+  const selectedSkill = skills.find(item => item.id === skill);
+  const modifier = selectedSkill ? character.skills[selectedSkill.id] ?? 0 : manualModifier;
+  const rollLabel = label.trim() || selectedSkill?.pt || "";
   const effectiveModifier = modifier + (tableConfig.officialRules.fullDefense && fullDefense ? 2 : 0);
+
+  const validRoomModifier = effectiveModifier >= -20 && effectiveModifier <= 20;
+  const chances = outcomeChances(effectiveModifier, difficulty);
+  const outcomeLabels = { failure: "Falha", tie: "Empate", success: "Sucesso", style: "Sucesso com estilo" };
 
   React.useEffect(() => {
     const handle = window.setTimeout(() => {
@@ -102,38 +108,28 @@ export function DiceRoller({
     }
   }, [history, hydrated]);
 
-  const chooseSkill = (value: string) => {
-    setSkill(value);
-    if (value === "manual") return;
-    setModifier(character.skills[value] ?? 0);
-    const chosen = skills.find((item) => item.id === value);
-    if (chosen && !label.trim()) setLabel(chosen.pt);
+  const chooseSkill = (value: string) => { setSkill(value); };
+  const reuseRoll = (roll: LocalRoll) => {
+    setSkill("manual"); setLabel(roll.label); setFullDefense(false); setManualModifier(roll.modifier);
+    modifierInput.current?.focus();
+    toast.info("Bônus e motivo preparados. Escolha onde fazer a nova rolagem.");
   };
 
   const addRoll = (roll: LocalRoll) => setHistory((current) => [roll, ...current].slice(0, 100));
 
   const rollLocal = () => {
     try {
-      const result = rollFateDice();
-      addRoll({
-        id: createId("roll"),
-        dice: result.dice,
-        modifier: effectiveModifier,
-        total: result.sum + effectiveModifier,
-        label: label.trim(),
-        createdAt: Date.now(),
-        source: "local",
-      });
+      addRoll(createLocalRoll(effectiveModifier, rollLabel));
     } catch {
       toast.error("A rolagem segura não está disponível neste navegador.");
     }
   };
 
   const rollInRoom = async () => {
-    if (!onRoomRoll || !roomReady || rollingRoom) return;
+    if (!onRoomRoll || !roomReady || rollingRoom || !validRoomModifier) return;
     setRollingRoom(true);
     try {
-      const roll = await onRoomRoll(effectiveModifier, label.trim());
+      const roll = await onRoomRoll(effectiveModifier, rollLabel);
       addRoll(roll);
       toast.success("Rolagem publicada na Mesa.");
     } catch (error) {
@@ -167,10 +163,11 @@ export function DiceRoller({
 
       <div className="dice-layout">
         <section className="roller-card">
+          <p className="roll-active-sheet">Ficha em uso: <b>{character.name || "Sem nome"}</b></p>
           <div className="roll-controls">
             <Label className="field-stack">
               <span>Usar perícia da ficha</span>
-              <Select value={skill} onValueChange={chooseSkill}>
+              <Select value={selectedSkill ? skill : "manual"} onValueChange={chooseSkill}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="manual">Bônus manual</SelectItem>
@@ -180,11 +177,11 @@ export function DiceRoller({
             </Label>
             <Label className="field-stack modifier-field">
               <span>Bônus</span>
-              <Input type="number" min={-20} max={20} value={modifier} onChange={(event) => { setSkill("manual"); setModifier(Math.max(-20, Math.min(20, Number(event.target.value) || 0))); }} />
+              <Input ref={modifierInput} type="number" min={-22} max={22} step={1} value={modifier} onChange={(event) => { setSkill("manual"); setFullDefense(false); setManualModifier(Math.max(-22, Math.min(22, Math.trunc(Number(event.target.value) || 0)))); }} />
             </Label>
             <Label className="field-stack roll-label-field">
               <span>Motivo <small>opcional</small></span>
-              <Input value={label} maxLength={120} onChange={(event) => setLabel(event.target.value)} />
+              <Input placeholder={selectedSkill?.pt || "O que está em jogo?"} value={label} maxLength={120} onChange={(event) => setLabel(event.target.value)} />
             </Label>
           </div>
 
@@ -192,7 +189,7 @@ export function DiceRoller({
             <Label className="full-defense-choice">
               <Shield aria-hidden="true" />
               <span><b>Defesa total</b><small>Somar +2 a esta rolagem. A ficção ainda decide quando vale.</small></span>
-              <Switch checked={fullDefense} onCheckedChange={setFullDefense} />
+              <Switch disabled={modifier > 20} checked={fullDefense} onCheckedChange={setFullDefense} />
             </Label>
           )}
 
@@ -212,11 +209,20 @@ export function DiceRoller({
 
           <div className="roll-buttons">
             <Button size="lg" onClick={rollLocal}><Dices /> Rolar neste dispositivo</Button>
-            {onRoomRoll && <Button size="lg" variant="outline" disabled={!roomReady || rollingRoom} onClick={rollInRoom}><Send /> {rollingRoom ? "Rolando…" : "Rolar na Mesa"}</Button>}
+            {onRoomRoll && <Button size="lg" variant="outline" disabled={!roomReady || rollingRoom || !validRoomModifier} onClick={rollInRoom}><Send /> {rollingRoom ? "Rolando…" : "Rolar na Mesa"}</Button>}
           </div>
 
           {tableConfig.officialRules.fullDefense && fullDefense && <p className="applied-bonus"><Shield /> Defesa total já incluída: {modifier >= 0 ? "+" : ""}{modifier} + 2 = {effectiveModifier >= 0 ? "+" : ""}{effectiveModifier}</p>}
 
+          {!validRoomModifier && <p className="reader-notice">A Mesa aceita bônus final entre −20 e +20. Ajuste o bônus para publicar.</p>}
+          <details className="roll-comparison">
+            <summary>Comparar com uma dificuldade</summary>
+            <p>Informe a dificuldade ou o esforço da oposição para comparar o resultado. A ação e a ficção determinam o que acontece.</p>
+            <Label className="field-stack"><span>Dificuldade ou oposição</span><Input type="number" min={-26} max={26} step={1} value={difficulty} onChange={event => setDifficulty(Math.max(-26, Math.min(26, Math.trunc(Number(event.target.value) || 0))))} /></Label>
+            {latest && <p aria-live="polite"><b>{outcomeLabels[outcome(latest.total, difficulty)]}</b> · Diferença: {latest.total - difficulty >= 0 ? "+" : ""}{latest.total - difficulty}</p>}
+            <div className="roll-outcomes">{(Object.keys(chances) as Array<keyof typeof chances>).map(key => <div key={key}><small>{outcomeLabels[key]}</small><b>{(chances[key] / 81 * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%</b></div>)}</div>
+            <small>Chances para uma nova rolagem com o bônus atual ({effectiveModifier >= 0 ? "+" : ""}{effectiveModifier}).</small>
+          </details>
           <p className="fairness-copy">Cada face (−, 0 ou +) tem exatamente 1/3 de chance.</p>
         </section>
 
@@ -241,6 +247,7 @@ export function DiceRoller({
       <section className="roll-history">
         <header>
           <div><p className="eyebrow">Últimas 100</p><h2>Histórico deste dispositivo</h2></div>
+          {history.length > 0 && <Button variant="outline" size="sm" onClick={() => safeJsonDownload("fate-rolagens.json", history)}><Download /> Exportar</Button>}
           {history.length > 0 && (
             <AlertDialog>
               <AlertDialogTrigger asChild><Button variant="ghost" size="sm"><Trash2 /> Limpar</Button></AlertDialogTrigger>
@@ -262,6 +269,7 @@ export function DiceRoller({
                 <b>{roll.modifier >= 0 ? `+${roll.modifier}` : roll.modifier}</b>
                 <strong>= {roll.total >= 0 ? `+${roll.total}` : roll.total}</strong>
                 <span>{roll.label || (roll.source === "room" ? "Rolagem da Mesa" : "Rolagem pessoal")}</span>
+                <Button variant="ghost" size="sm" onClick={() => reuseRoll(roll)}><RotateCcw /> Preparar de novo</Button>
               </li>
             ))}
           </ol>

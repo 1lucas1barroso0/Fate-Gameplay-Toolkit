@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useRoomDraft } from "@/lib/use-room-draft";
 import {
   ArrowLeft,
   BookOpen,
@@ -261,7 +262,8 @@ export function Rooms({
   onOpenSheets: () => void;
   onOpenDice: () => void;
 }) {
-  const [note, setNote] = React.useState("");
+  const draft = useRoomDraft(store.session?.participantId ?? "");
+  const note = draft.text;
   const [posting, setPosting] = React.useState(false);
   const [uploading, setUploading] = React.useState(false);
   const [filter, setFilter] = React.useState<"all" | RoomEntry["type"]>("all");
@@ -303,7 +305,7 @@ export function Rooms({
         <p>{store.error || "Buscando o estado mais recente da mesa…"}</p>
         <div className="inline-actions">
           <Button variant="outline" onClick={() => void store.refresh().catch(() => undefined)}><RefreshCw /> Tentar de novo</Button>
-          <Button variant="ghost" onClick={store.leave}><ArrowLeft /> Voltar</Button>
+          <Button variant="ghost" onClick={store.closeRoom}><ArrowLeft /> Voltar</Button>
         </div>
       </section>
     );
@@ -336,11 +338,12 @@ export function Rooms({
 
   const publishNote = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!note.trim() || posting) return;
+    if (!note.trim() || posting || !draft.ready || !store.roomReady) return;
+    const submitted = note;
     setPosting(true);
     try {
-      await store.postNote(note.trim());
-      setNote("");
+      await store.postNote(submitted.trim());
+      draft.acknowledge(submitted);
       toast.success("Nota publicada para a mesa.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "A nota não foi publicada.");
@@ -397,6 +400,10 @@ export function Rooms({
         </div>
       </header>
 
+      <div className="room-connection" role="status" data-state={store.connection}>
+        <span>{({ connecting: "Atualizando a Mesa…", synced: "Mesa atualizada", retrying: "Tentando reconectar…", offline: "Sem conexão. Seu rascunho continua aqui.", paused: "Atualização pausada enquanto esta aba está em segundo plano." })[store.connection]}{store.lastSyncedAt && store.connection === "synced" ? ` · ${new Date(store.lastSyncedAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}` : ""}</span>
+        {store.connection === "retrying" && <Button variant="outline" size="sm" onClick={() => void store.refresh()}>Tentar agora</Button>}
+      </div>
       <nav className="room-quick-actions" aria-label="Abrir recursos da Mesa">
         <Button type="button" variant="outline" className="room-quick-action" onClick={onOpenSheets}>
           <FileText aria-hidden="true" /><span><b>Fichas</b><small>Abrir</small></span>
@@ -451,8 +458,9 @@ export function Rooms({
       <div className="room-layout">
         <form className="note-composer" onSubmit={publishNote}>
           <Label htmlFor="room-note">Notas da mesa</Label>
-          <Textarea id="room-note" value={note} onChange={(event) => setNote(event.target.value)} maxLength={1600} rows={4} />
-          <div><small>{note.length}/1600</small><Button type="submit" disabled={!note.trim() || posting}>{posting ? <Loader2 className="animate-spin" /> : <Send />} Publicar</Button></div>
+          <Textarea id="room-note" value={note} onChange={(event) => draft.change(event.target.value)} disabled={!draft.ready} onKeyDown={(event) => { if ((event.ctrlKey || event.metaKey) && event.key === "Enter") { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} maxLength={1600} rows={4} />
+            <p className="draft-status" role="status">{draft.saved ? "Rascunho salvo neste navegador. Ctrl/⌘ + Enter para publicar." : "Não foi possível salvar o rascunho. Copie o texto antes de sair."}</p>
+          <div><small>{note.length}/1600</small><Button type="submit" disabled={!note.trim() || posting || !draft.ready || !store.roomReady}>{posting ? <Loader2 className="animate-spin" /> : <Send />} Publicar</Button></div>
         </form>
 
         <section className="room-feed" data-empty={visibleEntries.length === 0} aria-labelledby="room-feed-heading">

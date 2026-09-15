@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { createRoomSync, type RoomConnection } from "@/lib/room-sync";
 import { createUuid, type LocalRoll } from "@/lib/fate";
 import type {
   RoomEntry,
@@ -110,6 +111,10 @@ export function useRoom() {
   const [error, setError] = React.useState("");
   const [lastSyncedAt, setLastSyncedAt] = React.useState<number | null>(null);
   const [historyCursor, setHistoryCursor] = React.useState<string | null>(null);
+  const [connection, setConnection] = React.useState<RoomConnection>("paused");
+  const syncRef = React.useRef<ReturnType<typeof createRoomSync<RoomSnapshot>> | null>(null);
+  const activeSession = React.useRef<RoomSession | null>(null);
+  React.useEffect(() => { activeSession.current = session; }, [session]);
 
   React.useEffect(() => {
     const handle = window.setTimeout(() => {
@@ -163,47 +168,26 @@ export function useRoom() {
   React.useEffect(() => {
     if (!hydrated || !session) return;
 
-    let stopped = false;
-    let timer = 0;
-    let controller: AbortController | null = null;
-    const poll = async () => {
-      controller = new AbortController();
-      try {
-        const next = await fetchSnapshot(session, controller.signal, historyCursor);
-        if (stopped) return;
-        setSnapshot(next);
-        rememberRoom(session, next);
-        setError("");
-        setLastSyncedAt(Date.now());
-      } catch (pollError) {
-        if (stopped || (pollError instanceof DOMException && pollError.name === "AbortError")) return;
-        setError(pollError instanceof Error ? pollError.message : "A Mesa não respondeu.");
-      } finally {
-        if (!stopped && !historyCursor) timer = window.setTimeout(poll, 4000);
-      }
-    };
-    void poll();
+    const sync = createRoomSync<RoomSnapshot>({
+      fetch: signal => fetchSnapshot(session, signal, historyCursor),
+      receive: next => { setSnapshot(next); rememberRoom(session, next); setError(""); setLastSyncedAt(Date.now()); },
+      status: setConnection,
+      error: failure => setError(failure instanceof Error ? failure.message : "A Mesa não respondeu."),
+      history: Boolean(historyCursor),
+    });
+    syncRef.current = sync;
+    const resume = () => { void sync.resume(); }; resume();
+    window.addEventListener("online", resume); window.addEventListener("offline", resume); document.addEventListener("visibilitychange", resume);
     return () => {
-      stopped = true;
-      controller?.abort();
-      window.clearTimeout(timer);
+      sync.stop(); syncRef.current = null;
+      window.removeEventListener("online", resume); window.removeEventListener("offline", resume); document.removeEventListener("visibilitychange", resume);
     };
   }, [historyCursor, hydrated, rememberRoom, session]);
 
   const activate = React.useCallback(async (nextSession: RoomSession, rulesProfileId?: string) => {
     rememberRoom(nextSession, null, true, rulesProfileId);
-    setSession(nextSession);
-    setSnapshot(null);
-    setHistoryCursor(null);
-    setError("");
-    try {
-      const next = await fetchSnapshot(nextSession);
-      setSnapshot(next);
-      rememberRoom(nextSession, next, true, rulesProfileId);
-      setLastSyncedAt(Date.now());
-    } catch (activationError) {
-      setError(activationError instanceof Error ? activationError.message : "A Mesa não respondeu.");
-    }
+    activeSession.current = nextSession;
+    setSession(nextSession); setSnapshot(null); setLastSyncedAt(null); setHistoryCursor(null); setError(""); setConnection("connecting");
   }, [rememberRoom]);
 
   const create = React.useCallback(async (roomName: string, personName: string, rulesProfileId?: string) => {
@@ -255,20 +239,10 @@ export function useRoom() {
   }, [activate, busy]);
 
   const refresh = React.useCallback(async () => {
-    if (!session || refreshing) return;
+    if (!syncRef.current || refreshing) return;
     setRefreshing(true);
-    try {
-      const next = await fetchSnapshot(session, undefined, historyCursor);
-      setSnapshot(next);
-      setError("");
-      setLastSyncedAt(Date.now());
-    } catch (refreshError) {
-      setError(refreshError instanceof Error ? refreshError.message : "A Mesa não respondeu.");
-      throw refreshError;
-    } finally {
-      setRefreshing(false);
-    }
-  }, [historyCursor, refreshing, session]);
+    try { await syncRef.current.refresh(); } finally { setRefreshing(false); }
+  }, [refreshing]);
 
   const rememberEntry = React.useCallback((entry: RoomEntry) => {
     if (historyCursor) {
@@ -304,7 +278,7 @@ export function useRoom() {
       body: JSON.stringify({ ...body, requestId: createUuid() }),
     });
     const result = await decodeResponse<{ entry: RoomEntry }>(response);
-    rememberEntry(result.entry);
+    if (activeSession.current?.participantId === session.participantId) rememberEntry(result.entry);
     return result.entry;
   }, [rememberEntry, session]);
 
@@ -361,7 +335,7 @@ export function useRoom() {
         continue;
       }
       const result = await decodeResponse<{ entry: RoomEntry }>(response);
-      rememberEntry(result.entry);
+      if (activeSession.current?.participantId === session.participantId) rememberEntry(result.entry);
       return result.entry;
     }
 
@@ -470,6 +444,7 @@ export function useRoom() {
     });
     const result = await decodeResponse<{ deleted: boolean; filesQueued: number; cleanupPending: boolean }>(response);
     setSavedRooms((current) => current.filter((item) => item.session.participantId !== deletingParticipantId));
+    activeSession.current = null;
     setSession(null);
     setSnapshot(null);
     setError("");
@@ -518,6 +493,7 @@ export function useRoom() {
 
   const leave = React.useCallback(() => {
     setSavedRooms((current) => current.filter((item) => item.session.participantId !== session?.participantId));
+    activeSession.current = null;
     setSession(null);
     setSnapshot(null);
     setError("");
@@ -526,6 +502,7 @@ export function useRoom() {
   }, [session?.participantId]);
 
   const closeRoom = React.useCallback(() => {
+    activeSession.current = null;
     setSession(null);
     setSnapshot(null);
     setError("");
@@ -572,7 +549,8 @@ export function useRoom() {
     error,
     lastSyncedAt,
     viewingHistory: Boolean(historyCursor),
-    roomReady: snapshot?.self.status === "approved",
+    connection,
+    roomReady: snapshot?.self.status === "approved" && connection !== "offline",
     create,
     join,
     refresh,

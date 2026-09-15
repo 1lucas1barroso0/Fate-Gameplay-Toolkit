@@ -1,0 +1,51 @@
+{
+  "id": "fate-condensed",
+  "title": {
+    "pt": "Fate Condensado",
+    "en": "Fate Condensed"
+  },
+  "shortTitle": {
+    "pt": "Fate Condensado",
+    "en": "Fate Condensed"
+  },
+  "year": 2020,
+  "kind": "principal",
+  "tags": [
+    {
+      "pt": "Oficial",
+      "en": "Official"
+    },
+    {
+      "pt": "Principal",
+      "en": "Principal"
+    }
+  ],
+  "description": {
+    "pt": "A regra completa, direta e mais recente da linha Core. É sempre a base deste site.",
+    "en": "The complete, direct, and most recent ruleset in the Core line. It is always this site's foundation."
+  },
+  "contentNote": {
+    "pt": "Texto integral em português e inglês.",
+    "en": "Complete text in Portuguese and English."
+  },
+  "officialUrl": "https://evilhat.com/product/fate-condensed/",
+  "referenceUrl": {
+    "pt": "https://fatesrdbrasil.gitlab.io/fate-srd-brasil/fate-condensado/",
+    "en": "https://fate-srd.com/fate-condensed"
+  },
+  "licenseUrl": "https://creativecommons.org/licenses/by/3.0/",
+  "licenseUrlByLanguage": {
+    "pt": "https://creativecommons.org/licenses/by/4.0/",
+    "en": "https://creativecommons.org/licenses/by/3.0/"
+  },
+  "attribution": {
+    "pt": [
+      "Esta obra é baseada em Fate Condensado, traduzido pela comunidade e fãs, desenvolvido e editado por Estevan Fernandes Queiroz e licenciado para uso sob Creative Commons Atribuição 4.0 Internacional. Versão original: Fate Condensed © Evil Hat Productions, LLC. Documento de Referência do Sistema produzido por Estevan Fernandes Queiroz.",
+      "Fate Condensed ©2020 Evil Hat Productions, LLC. Fate™ é uma marca da Evil Hat Productions, LLC."
+    ],
+    "en": [
+      "This work is based on Fate Condensed, a product of Evil Hat Productions, LLC, developed, authored, and edited by PK Sullivan, Lara Turner, Leonard Balsera, Fred Hicks, Richard Bellingham, Robert Hanz, Ryan Macklin, and Sophie Lagacé, and licensed for our use under the Creative Commons Attribution 3.0 Unported license.",
+      "Fate Condensed ©2020 Evil Hat Productions, LLC. Fate™ is a trademark of Evil Hat Productions, LLC."
+    ]
+  }
+}

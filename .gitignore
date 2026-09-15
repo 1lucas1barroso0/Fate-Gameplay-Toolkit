@@ -39,3 +39,9 @@ yarn-error.log*
 next-env.d.ts
 /outputs/
 /work/
+
+# Generated reader assets (rebuilt before dev/build)
+/public/rule-books/
+/content/reader-catalog.json
+
+*.tsbuildinfo

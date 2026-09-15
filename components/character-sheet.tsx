@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { SheetPicker } from "@/components/sheet-picker";
 import { BookOpen, ChevronDown, Copy, Download, Eye, FileUp, Link2, Pencil, Plus, RotateCcw, Settings2, Sparkles, Trash2, Undo2, UsersRound } from "lucide-react";
 import { toast } from "sonner";
 import { SheetImage } from "@/components/sheet-image";
@@ -175,7 +176,7 @@ export function CharacterSheet({ store, tableConfig, rulesProfiles, activeRulesP
       <header className="workspace-toolbar sheet-toolbar">
         <div className="sheet-workspace-title"><p className="eyebrow">Seu elenco, seu mundo</p><h1 id="sheet-heading">Fichas</h1></div>
         <div className="toolbar-actions sheet-toolbar-actions">
-          <Select value={store.activeId} onValueChange={store.setActiveId}><SelectTrigger className="character-picker" aria-label="Escolher Ficha"><SelectValue /></SelectTrigger><SelectContent>{store.characters.map((item) => <SelectItem key={item.id} value={item.id}>{item.name || "Sem nome"}</SelectItem>)}</SelectContent></Select>
+          <SheetPicker characters={store.characters} activeId={store.activeId} onSelect={store.setActiveId} rooms={savedRooms} profiles={rulesProfiles} />
           <div className="sheet-mode-switch" role="group" aria-label="Modo da Ficha"><Button type="button" size="sm" variant={mode === "edit" ? "default" : "ghost"} aria-pressed={mode === "edit"} onClick={() => changeMode("edit")}><Pencil /> Editar</Button><Button type="button" size="sm" variant={mode === "view" ? "default" : "ghost"} aria-pressed={mode === "view"} onClick={() => changeMode("view")}><Eye /> Visualizar</Button></div>
           {mode === "edit" && <div className="sheet-edit-actions">
             <Dialog open={newOpen} onOpenChange={setNewOpen}><DialogTrigger asChild><Button className="sheet-new-action" size="sm"><Plus /> Nova Ficha</Button></DialogTrigger><DialogContent><DialogHeader><DialogTitle>Nova Ficha</DialogTitle><DialogDescription>Ela pode representar uma pessoa, criatura, veículo, lugar, organização ou qualquer outra coisa.</DialogDescription></DialogHeader><Label htmlFor="new-sheet-name">Nome da Ficha</Label><Input id="new-sheet-name" value={newName} maxLength={240} autoFocus onChange={(event) => setNewName(event.target.value)} /><DialogFooter><Button onClick={() => { store.addCharacter(newName.trim() || undefined, { rulesProfileId: activeRulesProfileId }); setNewName(""); setNewOpen(false); }}>Criar Ficha</Button></DialogFooter></DialogContent></Dialog>
