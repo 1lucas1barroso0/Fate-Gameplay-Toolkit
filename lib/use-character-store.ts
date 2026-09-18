@@ -1,4 +1,5 @@
 "use client";
+import { t } from "@/lib/app-language";
 
 import * as React from "react";
 import { toast } from "sonner";
@@ -160,6 +161,13 @@ export function useCharacterStore() {
     return imported;
   }, []);
 
+  const prepareImports = React.useCallback(async (inputs: unknown[]) => Promise.all(inputs.map(ensureCharacterImageStored)), []);
+  const mergeImports = React.useCallback((inputs: FateCharacter[]) => {
+    const copies = inputs.map(character => ({ ...character, id: createId("pc"), updatedAt: Date.now() }));
+    setCharacters(current => [...current, ...copies]);
+    if (copies[0]) setActiveId(copies[0].id);
+  }, []);
+
   const deleteCharacters = React.useCallback((ids: Iterable<string>) => {
     const selected = new Set(ids);
     if (!selected.size) return;
@@ -186,18 +194,18 @@ export function useCharacterStore() {
 
   const restoreBackup = React.useCallback(() => {
     const raw = localStorage.getItem(CHARACTER_BACKUP_KEY);
-    if (!raw) throw new Error("Nenhuma cópia anterior foi encontrada.");
+    if (!raw) throw new Error(t("Nenhuma cópia anterior foi encontrada."));
     const parsed = parseStoredCharacters(raw);
-    if (!parsed) throw new Error("A cópia anterior está inválida.");
+    if (!parsed) throw new Error(t("A cópia anterior está inválida."));
     const restored = parsed.characters.map((character) => characterSchema.parse(character));
-    if (!restored.length) throw new Error("A cópia anterior está vazia.");
+    if (!restored.length) throw new Error(t("A cópia anterior está vazia."));
     setCharacters(restored);
     setActiveId(restored.some((character) => character.id === parsed.activeId) ? parsed.activeId : restored[0].id);
   }, []);
 
   const cleanupUnusedImages = React.useCallback(async (minimumAgeMs = 0) => {
     const storedIds = collectStoredCharacterImageBlobIds();
-    if (!storedIds) throw new Error("Há uma cópia local inválida. Nenhuma imagem foi removida por segurança.");
+    if (!storedIds) throw new Error(t("Há uma cópia local inválida. Nenhuma imagem foi removida por segurança."));
     for (const id of collectCharacterImageBlobIds(characters)) storedIds.add(id);
     for (const id of collectCharacterImageBlobIds(undoStack.current)) storedIds.add(id);
     const result = await garbageCollectSheetImages(storedIds, minimumAgeMs);
@@ -230,6 +238,8 @@ export function useCharacterStore() {
     deleteActive,
     deleteCharacters,
     importCharacter,
+    prepareImports,
+    mergeImports,
     exportCharacter,
     replaceRulesProfileLink,
     replaceRoomLink,

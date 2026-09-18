@@ -83,5 +83,5 @@ test("mantém acessíveis as opções oficiais que derivam do capítulo opcional
   assert.match(settings, /Começar uma Ficha durante o jogo/);
   assert.match(settings, /Ler o capítulo completo/);
   assert.match(rulesLibrary, /chapters\.map/);
-  assert.match(rulesLibrary, /book\.chapters\[current\.id\]/);
+  assert.match(rulesLibrary, /book\.html/);
 });

@@ -1,5 +1,7 @@
 "use client";
 
+import { t, useAppLanguage } from "@/lib/app-language";
+
 import * as React from "react";
 import { RefreshCw } from "lucide-react";
 import { toast } from "sonner";
@@ -13,9 +15,9 @@ export type OrphanCleanupResult = {
 };
 
 function cleanupMessage(result: OrphanCleanupResult) {
-  if (!result.found) return "Nenhuma cópia sem registro foi encontrada. Os arquivos publicados foram preservados.";
+  if (!result.found) return t("Nenhuma cópia sem registro foi encontrada. Os arquivos publicados foram preservados.");
   const pending = result.pending || Math.max(0, result.found - result.removed);
-  return `${result.found} cópia(s) sem registro encontrada(s); ${result.removed} removida(s)${pending ? `; ${pending} aguardando limpeza automática` : ""}.`;
+  return t(`${result.found} cópia(s) sem registro encontrada(s); ${result.removed} removida(s)${pending ? `; ${pending} aguardando limpeza automática` : ""}.`, "" + String(result.found) + " unregistered copy/copies found; " + String(result.removed) + " removed" + String(pending ? `; ${pending} aguardando limpeza automática` : "") + ".");
 }
 
 export function OrphanCleanupDialog({
@@ -25,6 +27,7 @@ export function OrphanCleanupDialog({
   onCleanup: () => Promise<OrphanCleanupResult>;
   disabled?: boolean;
 }) {
+  useAppLanguage();
   const [working, setWorking] = React.useState(false);
 
   const cleanup = async () => {
@@ -33,7 +36,7 @@ export function OrphanCleanupDialog({
     try {
       toast.success(cleanupMessage(await onCleanup()));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "A verificação não terminou. Nenhuma cópia publicada foi alterada.");
+      toast.error(error instanceof Error ? error.message : t("A verificação não terminou. Nenhuma cópia publicada foi alterada."));
     } finally {
       setWorking(false);
     }
@@ -43,20 +46,18 @@ export function OrphanCleanupDialog({
     <AlertDialog>
       <AlertDialogTrigger asChild>
         <Button type="button" variant="outline" size="sm" disabled={disabled || working}>
-          <RefreshCw className={working ? "animate-spin" : undefined} /> Verificar e limpar
-        </Button>
+          <RefreshCw className={working ? "animate-spin" : undefined} /> {t("Verificar e limpar")}</Button>
       </AlertDialogTrigger>
       <AlertDialogContent size="sm" className="maintenance-dialog">
         <AlertDialogHeader>
-          <AlertDialogTitle>Verificar cópias sem registro?</AlertDialogTitle>
+          <AlertDialogTitle>{t("Verificar cópias sem registro?")}</AlertDialogTitle>
           <AlertDialogDescription>
-            Um envio interrompido pode deixar uma cópia no armazenamento sem aparecer no Histórico. Esta ação procura somente essas cópias e não remove arquivos publicados, Fichas, regras ou o Histórico.
-          </AlertDialogDescription>
+            {t("Um envio interrompido pode deixar uma cópia no armazenamento sem aparecer no Histórico. Esta ação procura somente essas cópias e não remove arquivos publicados, Fichas, regras ou o Histórico.")}</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel>Cancelar</AlertDialogCancel>
+          <AlertDialogCancel>{t("Cancelar")}</AlertDialogCancel>
           <AlertDialogAction variant="destructive" disabled={working} onClick={() => void cleanup()}>
-            {working ? "Verificando…" : "Verificar e limpar"}
+            {working ? "Verificando…" : t("Verificar e limpar")}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

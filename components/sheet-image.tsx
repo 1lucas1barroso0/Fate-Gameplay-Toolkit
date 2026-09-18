@@ -1,5 +1,7 @@
 "use client";
 
+import { t, useAppLanguage } from "@/lib/app-language";
+
 import * as React from "react";
 import { Focus, MoveHorizontal, MoveVertical, RefreshCw, Trash2, ZoomIn } from "lucide-react";
 import { toast } from "sonner";
@@ -28,6 +30,7 @@ export function SheetImage({
   editable: boolean;
   onChange?: (image: SheetImageValue) => void;
 }) {
+  useAppLanguage();
   const input = React.useRef<HTMLInputElement>(null);
   const [busy, setBusy] = React.useState(false);
   const [draft, setDraft] = React.useState(image);
@@ -86,9 +89,9 @@ export function SheetImage({
       const stored = await saveSheetImageBlob(prepared.blob, prepared.framing);
       setDraft(stored);
       onChange(stored);
-      toast.success("Imagem da Ficha pronta.");
+      toast.success(t("Imagem da Ficha pronta."));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "A imagem não pôde ser preparada.");
+      toast.error(error instanceof Error ? error.message : t("A imagem não pôde ser preparada."));
     } finally {
       setBusy(false);
     }
@@ -111,7 +114,7 @@ export function SheetImage({
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={imageSource}
-            alt={shown.alt || (name ? `Imagem de ${name}` : "Imagem da Ficha")}
+            alt={shown.alt || (name ? t(`Imagem de ${name}`, "Image of " + String(name) + "") : t("Imagem da Ficha"))}
             style={{
               objectPosition: `${shown.positionX}% ${shown.positionY}%`,
               transform: `scale(${shown.zoom})`,
@@ -121,20 +124,20 @@ export function SheetImage({
         ) : loadFailed ? (
           <div className="sheet-image-placeholder" role="status">
             <Focus aria-hidden="true" />
-            <b>Imagem indisponível neste dispositivo</b>
-            <span>A Ficha foi preservada. Importe sua cópia para recuperar a imagem.</span>
+            <b>{t("Imagem indisponível neste dispositivo")}</b>
+            <span>{t("A Ficha foi preservada. Importe sua cópia para recuperar a imagem.")}</span>
           </div>
         ) : editable ? (
           <button className="sheet-image-placeholder" type="button" disabled={busy} onClick={() => input.current?.click()}>
             <Focus aria-hidden="true" />
-            <b>Imagem da Ficha</b>
-            <span>{busy ? "Preparando a imagem…" : "Escolher imagem"}</span>
+            <b>{t("Imagem da Ficha")}</b>
+            <span>{busy ? t("Preparando a imagem…") : t("Escolher imagem")}</span>
           </button>
         ) : (
           <div className="sheet-image-placeholder">
             <Focus aria-hidden="true" />
-            <b>Imagem da Ficha</b>
-            <span>Opcional. A Ficha continua completa sem ela.</span>
+            <b>{t("Imagem da Ficha")}</b>
+            <span>{t("Opcional. A Ficha continua completa sem ela.")}</span>
           </div>
         )}
 
@@ -148,11 +151,11 @@ export function SheetImage({
 
       {editable && shown && imageSource && (
         <div className="sheet-image-controls">
-          <div className="framing-control"><MoveHorizontal aria-hidden="true" /><Label htmlFor="image-horizontal">Mover para os lados</Label><Slider id="image-horizontal" min={0} max={100} step={1} value={[shown.positionX]} onValueChange={([positionX]) => changeFraming({ positionX })} onValueCommit={([positionX]) => changeFraming({ positionX }, true)} /></div>
-          <div className="framing-control"><MoveVertical aria-hidden="true" /><Label htmlFor="image-vertical">Mover para cima ou para baixo</Label><Slider id="image-vertical" min={0} max={100} step={1} value={[shown.positionY]} onValueChange={([positionY]) => changeFraming({ positionY })} onValueCommit={([positionY]) => changeFraming({ positionY }, true)} /></div>
-          <div className="framing-control"><ZoomIn aria-hidden="true" /><Label htmlFor="image-zoom">Aproximar</Label><Slider id="image-zoom" min={1} max={2.5} step={0.05} value={[shown.zoom]} onValueChange={([zoom]) => changeFraming({ zoom })} onValueCommit={([zoom]) => changeFraming({ zoom }, true)} /></div>
-          <Label className="field-stack image-alt-field"><span>Descrição da imagem</span><Input value={shown.alt} maxLength={240} placeholder="O que aparece na imagem?" onChange={(event) => changeFraming({ alt: event.target.value })} onBlur={() => onChange?.(shown)} /></Label>
-          <Button type="button" variant="ghost" size="sm" onClick={() => { setDraft(null); onChange?.(null); }}><Trash2 /> Remover imagem</Button>
+          <div className="framing-control"><MoveHorizontal aria-hidden="true" /><Label htmlFor="image-horizontal">{t("Mover para os lados")}</Label><Slider id="image-horizontal" min={0} max={100} step={1} value={[shown.positionX]} onValueChange={([positionX]) => changeFraming({ positionX })} onValueCommit={([positionX]) => changeFraming({ positionX }, true)} /></div>
+          <div className="framing-control"><MoveVertical aria-hidden="true" /><Label htmlFor="image-vertical">{t("Mover para cima ou para baixo")}</Label><Slider id="image-vertical" min={0} max={100} step={1} value={[shown.positionY]} onValueChange={([positionY]) => changeFraming({ positionY })} onValueCommit={([positionY]) => changeFraming({ positionY }, true)} /></div>
+          <div className="framing-control"><ZoomIn aria-hidden="true" /><Label htmlFor="image-zoom">{t("Aproximar")}</Label><Slider id="image-zoom" min={1} max={2.5} step={0.05} value={[shown.zoom]} onValueChange={([zoom]) => changeFraming({ zoom })} onValueCommit={([zoom]) => changeFraming({ zoom }, true)} /></div>
+          <Label className="field-stack image-alt-field"><span>{t("Descrição da imagem")}</span><Input value={shown.alt} maxLength={240} placeholder="O que aparece na imagem?" onChange={(event) => changeFraming({ alt: event.target.value })} onBlur={() => onChange?.(shown)} /></Label>
+          <Button type="button" variant="ghost" size="sm" onClick={() => { setDraft(null); onChange?.(null); }}><Trash2 /> {t("Remover imagem")}</Button>
         </div>
       )}
     </section>

@@ -138,6 +138,7 @@ const sheetStructureSchema = z.object({
     value: z.number().int().min(0).max(20),
     qualifier: z.string().trim().max(60),
     availability: z.enum(["always", "high-rating"]),
+    track: z.enum(["general", "physical", "mental"]).optional(),
   })).max(20),
   resources: z.array(namedSheetItemSchema.extend({
     kind: z.enum(["counter", "text", "check"]),
@@ -314,10 +315,10 @@ export function getActiveOfficialRules(config: TableConfig) {
   return OFFICIAL_OPTIONAL_RULES.filter((rule) => config.officialRules[rule.id]);
 }
 
-export function getContextRules(config: TableConfig, scope: RuleScope) {
+export function getContextRules(config: TableConfig, scope: RuleScope, translate: (text: string) => string = text => text) {
   const official = getActiveOfficialRules(config)
     .filter((rule) => (rule.scopes as readonly RuleScope[]).includes(scope))
-    .map((rule) => ({ id: rule.id, name: rule.title, description: rule.short, kind: "official" as const }));
+    .map((rule) => ({ id: rule.id, name: translate(rule.title), description: translate(rule.short), kind: "official" as const }));
   const custom = config.customRules
     .filter((rule) => rule.enabled && rule.scopes.includes(scope))
     .map((rule) => ({ id: rule.id, name: rule.name, description: rule.description, kind: "custom" as const }));
@@ -333,15 +334,15 @@ export function activeRuleCount(config: TableConfig) {
     + Number(JSON.stringify(config.sheetStructure) !== JSON.stringify(createDefaultSheetStructure()));
 }
 
-export function summarizeTableConfig(config: TableConfig) {
+export function summarizeTableConfig(config: TableConfig, translate: (text: string, english?: string) => string = text => text) {
   const choices = [
-    config.damageMode === "consequences" ? "Consequências" : config.damageMode === "conditions" ? "Condições" : "Condições separadas",
-    SKILL_PRESETS[config.skillSystem.preset as keyof typeof SKILL_PRESETS]?.name ?? "Lista própria de perícias",
-    ...getActiveOfficialRules(config).map((rule) => rule.title),
+    translate(config.damageMode === "consequences" ? "Consequências" : config.damageMode === "conditions" ? "Condições" : "Condições separadas"),
+    translate(SKILL_PRESETS[config.skillSystem.preset as keyof typeof SKILL_PRESETS]?.name ?? "Lista própria de perícias"),
+    ...getActiveOfficialRules(config).map((rule) => translate(rule.title)),
     ...config.customRules.filter((rule) => rule.enabled).map((rule) => rule.name),
   ];
-  if (JSON.stringify(config.sheetStructure) !== JSON.stringify(createDefaultSheetStructure())) choices.push("Ficha personalizada");
-  return `Regras de ${config.profileName}: ${choices.join(" · ")}.`;
+  if (JSON.stringify(config.sheetStructure) !== JSON.stringify(createDefaultSheetStructure())) choices.push(translate("Ficha personalizada"));
+  return translate(`Regras de ${config.profileName}: ${choices.join(" · ")}.`, `Rules for ${config.profileName}: ${choices.join(" · ")}.`);
 }
 
 export function makeCustomSkill(name: string) {

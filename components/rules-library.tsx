@@ -1,9 +1,10 @@
 "use client";
+import { useAppLanguage, getAppLanguage, setAppLanguage } from "@/lib/app-language";
 
 import * as React from "react";
 import { ArrowLeft, ArrowRight, BookOpen, Bookmark, Check, ChevronDown, Download, ExternalLink, FileText, FileUp, Link2, List, Loader2, LockKeyhole, Search, Send, Settings2, Sparkles, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
-import { DEFAULT_READING, bookSearchDocuments, EMPTY_SEARCH, loadBook, loadSearch, normalizeSearch, readerCatalog, readingFromHash, readingHash, readingKey, searchChapters, type BookText, type Localized, type ReaderChapter, type ReaderLocation, type ReaderSource, type SearchDocument } from "@/lib/reader-library";
+import { DEFAULT_READING, EMPTY_SEARCH, loadChapter, loadSearch, normalizeSearch, readerCatalog, readingFromHash, readingHash, readingKey, searchChapters, type ChapterText, type Localized, type ReaderChapter, type ReaderLocation, type ReaderSource, type SearchDocument } from "@/lib/reader-library";
 import { mergeReading, parseReading, rememberReading, toggleBookmark } from "@/lib/reading-state";
 import { updateReading, useReadingState } from "@/lib/use-reading-state";
 import { readerSections } from "@/lib/reader-sections";
@@ -431,6 +432,7 @@ export function RulesLibrary({
   onOpenRooms?: () => void;
 }) {
   const reading = useReadingState();
+  const { language: appLanguage, t } = useAppLanguage();
   const [location, setLocation] = React.useState<ReaderLocation>(DEFAULT_READING);
   const { language, sourceId, chapterId } = location;
   const [initialized, setInitialized] = React.useState(false);
@@ -438,9 +440,9 @@ export function RulesLibrary({
   const [scope, setScope] = React.useState<"book" | "all">("book");
   const [resultLimit, setResultLimit] = React.useState(20);
   const deferredQuery = React.useDeferredValue(query);
-  const [book, setBook] = React.useState<BookText | null>(null);
+  const [book, setBook] = React.useState<ChapterText | null>(null);
   const [bookError, setBookError] = React.useState("");
-  const [allSearch, setAllSearch] = React.useState<{ language: Language; documents: SearchDocument[] } | null>(null);
+  const [allSearch, setAllSearch] = React.useState<{ language: Language; sourceId: string; documents: SearchDocument[] } | null>(null);
   const [searchError, setSearchError] = React.useState(false);
   const [retry, setRetry] = React.useState(0);
   const [savedOpen, setSavedOpen] = React.useState(false);
@@ -451,30 +453,33 @@ export function RulesLibrary({
   const importInput = React.useRef<HTMLInputElement>(null);
   const scrollIntent = React.useRef<"restore" | "start">("restore");
   const visibleAnchor = React.useRef("");
-  const contextualRules = getContextRules(tableConfig, "rules");
+  const contextualRules = getContextRules(tableConfig, "rules", t);
   const copy = interfaceCopy[language];
   const currentSource = sources.find(source => source.id === sourceId) ?? sources[0];
   const current = currentSource.chapters.find(chapter => chapter.id === chapterId) ?? currentSource.chapters[0];
   const currentIndex = currentSource.chapters.findIndex(chapter => chapter.id === current.id);
   const previousChapter = currentSource.chapters[currentIndex - 1];
   const nextChapter = currentSource.chapters[currentIndex + 1];
-  const rawHtml = book?.sourceId === sourceId && book.language === language ? book.chapters[current.id] : undefined;
+  const rawHtml = book?.sourceId === sourceId && book.language === language && book.chapterId === current.id ? book.html : undefined;
   const prepared = React.useMemo(() => readerSections(prepareRuleHtml(rawHtml ?? "", language)), [rawHtml, language]);
   const readingMinutes = Math.max(1, Math.ceil(current.wordCount[language] / 220));
   const key = readingKey(location);
   const bookmarked = reading.state.bookmarks.some(item => readingKey(item) === key);
-  const needsSearch = scope === "all" && query.trim().length >= 2;
+  const needsSearch = query.trim().length >= 2;
+  const searchSourceId = scope === "all" ? "all" : sourceId;
 
   React.useEffect(() => {
     const handle = window.setTimeout(() => {
       let saved = DEFAULT_READING;
       try { const raw = localStorage.getItem("fate-gameplay-toolkit.reading.v1"); if (raw) saved = parseReading(JSON.parse(raw)).last; } catch { /* Use the session default without deleting unreadable data. */ }
-      setLocation(readingFromHash(window.location.hash) ?? saved);
+      const target = readingFromHash(window.location.hash) ?? { ...saved, language: getAppLanguage() };
+      setAppLanguage(target.language);
+      setLocation(target);
       setInitialized(true);
     }, 0);
     const navigate = () => {
       const target = readingFromHash(window.location.hash);
-      if (target) { scrollIntent.current = "restore"; setLocation(target); }
+      if (target) { scrollIntent.current = "restore"; setAppLanguage(target.language); setLocation(target); }
     };
     window.addEventListener("hashchange", navigate);
     return () => { window.clearTimeout(handle); window.removeEventListener("hashchange", navigate); };
@@ -482,24 +487,35 @@ export function RulesLibrary({
 
   React.useEffect(() => {
     if (!initialized) return;
+    const timer = setTimeout(() => setLocation(previous => previous.language === appLanguage ? previous : { ...previous, language: appLanguage, anchor: undefined }), 0);
+    return () => clearTimeout(timer);
+  }, [appLanguage, initialized]);
+
+  React.useEffect(() => {
+    if (!initialized) return;
     let cancelled = false;
-    loadBook(currentSource, language).then(value => {
-      if (!cancelled) { setBook(value); setBookError(""); }
+    let preload: ReturnType<typeof setTimeout> | undefined;
+    loadChapter(currentSource, current, language).then(value => {
+      if (!cancelled) {
+        setBook(value); setBookError("");
+        const connection = (navigator as Navigator & { connection?: { saveData?: boolean; effectiveType?: string } }).connection;
+        if (nextChapter && !connection?.saveData && !connection?.effectiveType?.includes("2g")) preload = setTimeout(() => { if (document.visibilityState === "visible") void loadChapter(currentSource, nextChapter, language).catch(() => undefined); }, 1200);
+      }
     }).catch(() => { if (!cancelled) setBookError(currentSource.id + ":" + language); });
-    return () => { cancelled = true; };
-  }, [currentSource, language, initialized, retry]);
+    return () => { cancelled = true; clearTimeout(preload); };
+  }, [currentSource, current, nextChapter, language, initialized, retry]);
 
   React.useEffect(() => {
     if (!needsSearch) return;
     let cancelled = false;
-    loadSearch(language).then(documents => {
-      if (!cancelled) { setAllSearch({ language, documents }); setSearchError(false); }
+    loadSearch(language, scope === "all" ? undefined : currentSource).then(documents => {
+      if (!cancelled) { setAllSearch({ language, sourceId: searchSourceId, documents }); setSearchError(false); }
     }).catch(() => { if (!cancelled) setSearchError(true); });
     return () => { cancelled = true; };
-  }, [needsSearch, language, retry]);
+  }, [needsSearch, language, retry, scope, currentSource, searchSourceId]);
 
-  const bookSearch = React.useMemo(() => bookSearchDocuments(book, sourceId, language), [book, sourceId, language]);
-  const documents = scope === "all" ? allSearch?.language === language ? allSearch.documents : EMPTY_SEARCH : bookSearch;
+  const searchReady = allSearch?.language === language && allSearch.sourceId === searchSourceId;
+  const documents = searchReady ? allSearch.documents : EMPTY_SEARCH;
   const results = React.useMemo(() => searchChapters(documents, deferredQuery, language), [documents, deferredQuery, language]);
   const customResults = React.useMemo(() => {
     const terms = normalizeSearch(deferredQuery.trim()).split(/\s+/);
@@ -547,6 +563,7 @@ export function RulesLibrary({
   }, [initialized, rawHtml, key, location.anchor]);
 
   const navigate = (target: ReaderLocation, intent: "restore" | "start" = "start") => {
+    setAppLanguage(target.language);
     scrollIntent.current = intent;
     visibleAnchor.current = "";
     setLocation(target);
@@ -573,7 +590,7 @@ export function RulesLibrary({
     const hash = readingHash({ sourceId: legacy ? "fate-condensed" : parts[1], chapterId: legacy ? parts[1] : parts[2], language: (legacy ? parts[2] : parts[3]) as Language });
     const target = readingFromHash(hash);
     if (!target) return;
-    const handle = window.setTimeout(() => { scrollIntent.current = "start"; setLocation(target); window.history.replaceState(null, "", hash); }, 0);
+    const handle = window.setTimeout(() => { scrollIntent.current = "start"; setAppLanguage(target.language); setLocation(target); window.history.replaceState(null, "", hash); }, 0);
     return () => window.clearTimeout(handle);
   }, [openReference]);
 
@@ -738,7 +755,7 @@ export function RulesLibrary({
       </div>
       {query.trim().length >= 2 && (
         <div className="rule-search-results" aria-live="polite">
-          {(scope === "all" && allSearch?.language !== language) || (scope === "book" && !rawHtml) ? <p role="status">{(scope === "all" && searchError) || bookError === sourceId + ":" + language ? <><span>{language === "pt" ? "A busca não carregou. Confira a conexão." : "Search could not load. Check your connection."}</span> <Button size="sm" variant="outline" onClick={() => setRetry(value => value + 1)}>{language === "pt" ? "Tentar de novo" : "Try again"}</Button></> : <><Loader2 className="animate-spin" /> {language === "pt" ? "Preparando a busca…" : "Preparing search…"}</>}</p> : <p>{results.length + customResults.length ? copy.result(results.length + customResults.length) : copy.noResults}</p>}
+          {!searchReady ? <p role="status">{searchError ? <><span>{language === "pt" ? "A busca não carregou. Confira a conexão." : "Search could not load. Check your connection."}</span> <Button size="sm" variant="outline" onClick={() => setRetry(value => value + 1)}>{language === "pt" ? "Tentar de novo" : "Try again"}</Button></> : <><Loader2 className="animate-spin" /> {language === "pt" ? "Preparando a busca…" : "Preparing search…"}</>}</p> : <p>{results.length + customResults.length ? copy.result(results.length + customResults.length) : copy.noResults}</p>}
           {customResults.map((rule) => (
             <article className="custom-rule-search-hit" key={rule.id}>
               <small>{copy.tableRule}</small><b>{rule.name}</b><span>{rule.description}</span>

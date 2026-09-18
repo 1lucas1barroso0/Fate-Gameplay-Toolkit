@@ -227,8 +227,8 @@ test("keeps responsive reflow and accessibility safeguards in the Fate shell", a
   assert.match(storage, /Sem apagar seu jogo/);
   assert.match(storage, /Dados das Mesas/);
   assert.doesNotMatch(image, /para leitores de tela/);
-  assert.match(image, /<span>Descrição da imagem<\/span>/);
-  assert.match(app, /<span>Mesas<\/span>/);
+  assert.match(image, /<span>\{t\("Descrição da imagem"\)\}<\/span>/);
+  assert.match(app, /<span>\{t\("Mesas"\)\}<\/span>/);
 });
 
 test("cleans imported rule markup and preserves readable structures", async () => {
@@ -334,7 +334,7 @@ test("keeps the requested human-facing labels and removes redundant sheet copy",
   ]);
 
   assert.match(app, /Fichas, regras e mesas do seu jeito/);
-  assert.match(app, /<span>Fichas<\/span>/);
+  assert.match(app, /<span>\{t\("Fichas"\)\}<\/span>/);
   assert.doesNotMatch(app, /profile-button/);
   assert.match(rules, /Central de Regras/);
   assert.doesNotMatch(`${app}\n${sheet}\n${rules}\n${rooms}\n${footer}`, /Centro de [Rr]egras/);
@@ -342,11 +342,11 @@ test("keeps the requested human-facing labels and removes redundant sheet copy",
   assert.doesNotMatch(sheet, /placeholder="O essencial sobre o que esta Ficha representa"/);
   assert.match(sheet, /table-link-strip/);
   assert.match(sheet, /Link2/);
-  assert.match(sheet, /Mesa: \{linkedRoom/);
-  assert.match(sheet, /Regras: \{linkedProfile/);
+  assert.match(sheet, /\{t\("Mesa:"\)\} \{linkedRoom/);
+  assert.match(sheet, /\{t\("Regras:"\)\} \{linkedProfile/);
   assert.match(sheet, /Ajustar escolhas/);
   assert.match(sheet, /className="sheet-edit-actions"/);
-  assert.match(sheet, /className="sheet-utility-actions" role="group" aria-label="Ações desta Ficha"/);
+  assert.match(sheet, /className="sheet-utility-actions" role="group" aria-label=\{t\("Ações desta Ficha"\)\}/);
   assert.doesNotMatch(sheet, /onOpenTable/);
   assert.match(app, /roomStore=\{roomStore\} onOpenRooms=\{\(\) => changeWorkspace\("salas"\)\}/);
 });
@@ -373,8 +373,8 @@ test("keeps saved Mesas idle and connects every direction without duplicate rela
   assert.match(sheet, /Abrir Mesa ou regras desta Ficha/);
   assert.match(sheet, /onOpenLinkedRoom\(linkedRoom\.session\.participantId\)/);
   assert.match(sheet, /onOpenLinkedRules\(linkedProfile\.id\)/);
-  assert.match(sheet, /Mesa: \{linkedRoom\.roomName/);
-  assert.match(sheet, /Regras: \{linkedProfile\.config\.profileName/);
+  assert.match(sheet, /\{t\("Mesa:"\)\} \{linkedRoom\.roomName/);
+  assert.match(sheet, /\{t\("Regras:"\)\} \{linkedProfile\.config\.profileName/);
   assert.match(rules, /className="active-profile-strip">\s*<BookOpen/);
   assert.match(rules, /<PrivateTableLibrary language=\{language\} store=\{roomStore\}/);
   assert.match(rules, /roomStore: RoomStore/);
@@ -389,9 +389,9 @@ test("keeps saved Mesas idle and connects every direction without duplicate rela
   assert.match(rooms, /Seu pedido chegou\. Você entra assim que o narrador aprovar\./);
   assert.match(rooms, /A primeira rolagem, nota, regra ou arquivo aparecerá aqui\./);
   assert.match(rooms, /data-empty=\{visibleEntries\.length === 0\}/);
-  assert.match(rooms, /<b>Fichas<\/b>/);
-  assert.match(rooms, /<b>Regras<\/b>/);
-  assert.match(rooms, /<b>Rolar<\/b>/);
+  assert.match(rooms, /<b>\{t\("Fichas"\)\}<\/b>/);
+  assert.match(rooms, /<b>\{t\("Regras"\)\}<\/b>/);
+  assert.match(rooms, /<b>\{t\("Rolar"\)\}<\/b>/);
   assert.match(rooms, /onOpenRulesProfile\(linkedProfile\.id\)/);
   assert.match(styles, /\.resource-counter \{ display: grid; grid-template-columns: minmax\(0, 1fr\) auto;/);
   assert.match(styles, /\.consequence-field \{ grid-template-columns: minmax\(155px, 0\.38fr\)/);
@@ -435,7 +435,7 @@ test("keeps rules, rolls and Mesas direct and visually quiet", async () => {
   assert.match(styles, /\.probability-panel \{ min-width: 0; align-self: start;/);
   assert.match(styles, /\.probability-bars > div \{ display: grid; grid-template-columns: 2\.3rem minmax\(0, 1fr\) 4\.4rem;/);
   assert.match(rooms, /Jogo em grupo/);
-  assert.match(rooms, /<p>Crie, entre e volte às suas Mesas\.<\/p>/);
+  assert.match(rooms, /<p>\{t\("Crie, entre e volte às suas Mesas\."\)\}<\/p>/);
   assert.match(rooms, /Entrar como jogador/);
   assert.match(rooms, /Como quer ser chamado/);
   assert.match(rooms, /Pedir para entrar/);
@@ -462,14 +462,14 @@ test("applies the final room, roll and settings wording without mixing indirect 
   const newRuleForm = settings.slice(newRuleStart, newRuleEnd);
 
   assert.match(dice, /FATE_PROBABILITIES_DESCENDING = \[\.\.\.FATE_PROBABILITIES\]\.sort\(\(left, right\) => right\.total - left\.total\)/);
-  assert.match(dice, /<div className="empty-inline">As rolagens aparecerão aqui\.<\/div>/);
+  assert.match(dice, /<div className="empty-inline">\{t\("As rolagens aparecerão aqui\."\)\}<\/div>/);
   assert.doesNotMatch(dice, /<RotateCcw \/> As rolagens aparecerão aqui/);
   assert.match(rooms, /\{store\.session && linkedProfile && \(\s*<div className="room-rules-choice">/);
   assert.doesNotMatch(rooms, /room-quick-action-group/);
-  assert.match(rooms, /<Label htmlFor="room-note">Notas da mesa<\/Label>/);
+  assert.match(rooms, /<Label htmlFor="room-note">\{t\("Notas da mesa"\)\}<\/Label>/);
   assert.doesNotMatch(rooms, /id="room-note"[^>]*placeholder=/);
-  assert.match(settings, /<SettingChoice value="light" title="Claro" \/>/);
-  assert.match(settings, /<SettingChoice value="dark" title="Escuro" \/>/);
+  assert.match(settings, /<SettingChoice value="light" title=\{t\("Claro"\)\} \/>/);
+  assert.match(settings, /<SettingChoice value="dark" title=\{t\("Escuro"\)\} \/>/);
   assert.doesNotMatch(settings, /SettingChoice value="system"|Tudo guardado|Salvamento automático ativo/);
   assert.match(providers, /defaultTheme="dark" themes=\{\["light", "dark"\]\} enableSystem=\{false\}/);
   assert.match(settings, /Do seu jeito, sem deixar de ser Fate/);
@@ -479,14 +479,14 @@ test("applies the final room, roll and settings wording without mixing indirect 
   assert.ok(newRuleStart >= 0 && newRuleEnd > newRuleStart);
   assert.doesNotMatch(newRuleForm, /placeholder=/);
   assert.doesNotMatch(settings, /placeholder=/);
-  assert.match(settings, /<legend>Escolha onde aplicar<\/legend>/);
+  assert.match(settings, /<legend>\{t\("Escolha onde aplicar"\)\}<\/legend>/);
   assert.match(settings, /Conjunto em uso/);
   assert.match(settings, /Novo conjunto/);
   assert.match(settings, /Recuperar versão anterior/);
   assert.match(settings, /Restaurar este conjunto ao padrão/);
   assert.match(structure, /Restaurar só a estrutura/);
   assert.doesNotMatch(structure, /Restaurar estrutura padrão/);
-  assert.match(settings, /<Badge variant="outline">Oficial<\/Badge><Badge variant="secondary">Opcional<\/Badge>/);
+  assert.match(settings, /<Badge variant="outline">\{t\("Oficial"\)\}<\/Badge><Badge variant="secondary">\{t\("Opcional"\)\}<\/Badge>/);
   assert.doesNotMatch(`${dice}\n${settings}`, /Oficial opcional/);
   assert.match(settings, /Salvar mudanças/);
   assert.match(settings, /Importar mudanças/);

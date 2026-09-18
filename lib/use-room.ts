@@ -1,6 +1,8 @@
 "use client";
 
 import * as React from "react";
+import { t, getAppLanguage } from "@/lib/app-language";
+import { recordDiagnostic } from "@/lib/local-diagnostics";
 import { createRoomSync, type RoomConnection } from "@/lib/room-sync";
 import { createUuid, type LocalRoll } from "@/lib/fate";
 import type {
@@ -30,7 +32,7 @@ export type SavedRoom = {
   rulesProfileId: string;
 };
 
-type ApiError = { error?: string };
+type ApiError = { error?: string; code?: string; retryAfter?: number };
 
 function newToken() {
   const bytes = new Uint8Array(32);
@@ -75,7 +77,11 @@ function readRooms(): { active: RoomSession | null; saved: SavedRoom[] } {
 
 async function decodeResponse<T>(response: Response): Promise<T> {
   const body = (await response.json().catch(() => ({}))) as T & ApiError;
-  if (!response.ok) throw new Error(body.error || "A Mesa não respondeu.");
+  if (!response.ok) {
+    recordDiagnostic(response.url.includes("/files") ? "upload" : "sync", "error", undefined, response.status);
+    if (response.status === 429) throw new Error(t(`Aguarde ${body.retryAfter ?? 60} segundos antes de tentar novamente.`, `Wait ${body.retryAfter ?? 60} seconds before trying again.`));
+    throw new Error(getAppLanguage() === "en" ? t(body.error ?? "", response.status === 401 ? "Rejoin this table on this device." : response.status === 403 ? "This action requires approved membership or GM access." : response.status === 413 ? "This request exceeds the table’s safe limits." : response.status === 507 ? "Table storage is full. Export or remove data before retrying." : "The table could not complete the request. Your existing data were preserved.") : body.error || t("A Mesa não respondeu."));
+  }
   return body;
 }
 
@@ -87,6 +93,7 @@ function sessionHeaders(session: RoomSession) {
 }
 
 async function fetchSnapshot(session: RoomSession, signal?: AbortSignal, before?: string | null) {
+  const started = Date.now();
   const query = before ? `?before=${encodeURIComponent(before)}` : "";
   const response = await fetch(`/api/rooms/${session.roomCode}${query}`, {
     method: "GET",
@@ -94,7 +101,9 @@ async function fetchSnapshot(session: RoomSession, signal?: AbortSignal, before?
     cache: "no-store",
     signal,
   });
-  return decodeResponse<RoomSnapshot>(response);
+  const snapshot = await decodeResponse<RoomSnapshot>(response);
+  recordDiagnostic("sync", "ok", Date.now() - started, response.status);
+  return snapshot;
 }
 
 function waitForUploadCallback(milliseconds: number) {
@@ -139,12 +148,12 @@ export function useRoom() {
     try {
       const serialized = JSON.stringify({ version: 3, rooms: savedRooms });
       localStorage.setItem(SESSIONS_KEY, serialized);
-      if (localStorage.getItem(SESSIONS_KEY) !== serialized) throw new Error("A gravação não foi confirmada.");
+      if (localStorage.getItem(SESSIONS_KEY) !== serialized) throw new Error(t("A gravação não foi confirmada."));
       if (session?.participantId) sessionStorage.setItem(ACTIVE_SESSION_KEY, session.participantId);
       else sessionStorage.removeItem(ACTIVE_SESSION_KEY);
       localStorage.removeItem(SESSION_KEY);
     } catch {
-      failureTimer = window.setTimeout(() => setError("O navegador não conseguiu lembrar mudanças nas Mesas. As credenciais anteriores foram preservadas."), 0);
+      failureTimer = window.setTimeout(() => setError(t("O navegador não conseguiu lembrar mudanças nas Mesas. As credenciais anteriores foram preservadas.")), 0);
     }
     return () => window.clearTimeout(failureTimer);
   }, [hydrated, savedRooms, session?.participantId]);
@@ -172,7 +181,7 @@ export function useRoom() {
       fetch: signal => fetchSnapshot(session, signal, historyCursor),
       receive: next => { setSnapshot(next); rememberRoom(session, next); setError(""); setLastSyncedAt(Date.now()); },
       status: setConnection,
-      error: failure => setError(failure instanceof Error ? failure.message : "A Mesa não respondeu."),
+      error: failure => setError(failure instanceof Error ? failure.message : t("A Mesa não respondeu.")),
       history: Boolean(historyCursor),
     });
     syncRef.current = sync;
@@ -271,7 +280,7 @@ export function useRoom() {
   }, [historyCursor]);
 
   const postEntry = React.useCallback(async (body: Record<string, unknown>) => {
-    if (!session) throw new Error("Entre em uma Mesa primeiro.");
+    if (!session) throw new Error(t("Entre em uma Mesa primeiro."));
     const response = await fetch(`/api/rooms/${session.roomCode}`, {
       method: "POST",
       headers: { "content-type": "application/json", ...sessionHeaders(session) },
@@ -293,15 +302,15 @@ export function useRoom() {
   );
 
   const postFile = React.useCallback(async (file: File) => {
-    if (!session) throw new Error("Entre em uma Mesa primeiro.");
-    if (!file.size) throw new Error("Este arquivo está vazio.");
-    if (file.size > MAX_ROOM_FILE_BYTES) throw new Error("Escolha um arquivo de até 50 MB.");
+    if (!session) throw new Error(t("Entre em uma Mesa primeiro."));
+    if (!file.size) throw new Error(t("Este arquivo está vazio."));
+    if (file.size > MAX_ROOM_FILE_BYTES) throw new Error(t("Escolha um arquivo de até 50 MB."));
     const currentFiles = snapshot?.storage.files;
     if (currentFiles && currentFiles.count + 1 > MAX_ROOM_FILES) {
       throw new Error(`Esta Mesa chegou a ${MAX_ROOM_FILES} arquivos. Exclua um antes de continuar.`);
     }
     if (currentFiles && currentFiles.usedBytes + file.size > ROOM_FILE_BUDGET_BYTES) {
-      throw new Error("Este arquivo ultrapassaria o espaço disponível nesta Mesa. Exporte ou exclua arquivos primeiro.");
+      throw new Error(t("Este arquivo ultrapassaria o espaço disponível nesta Mesa. Exporte ou exclua arquivos primeiro."));
     }
 
     const requestId = createUuid();
@@ -339,11 +348,11 @@ export function useRoom() {
       return result.entry;
     }
 
-    throw new Error("O arquivo chegou, mas ainda não apareceu na Mesa. Atualize o histórico em alguns instantes.");
+    throw new Error(t("O arquivo chegou, mas ainda não apareceu na Mesa. Atualize o histórico em alguns instantes."));
   }, [rememberEntry, session, snapshot?.storage.files]);
 
   const readFile = React.useCallback(async (entry: RoomEntry) => {
-    if (!session || entry.type !== "file") throw new Error("Este arquivo não está disponível.");
+    if (!session || entry.type !== "file") throw new Error(t("Este arquivo não está disponível."));
     const response = await fetch(`/api/rooms/${session.roomCode}/files/${encodeURIComponent(entry.id)}`, {
       method: "GET",
       headers: sessionHeaders(session),
@@ -351,7 +360,7 @@ export function useRoom() {
     });
     if (!response.ok) {
       const error = await response.json().catch(() => ({})) as ApiError;
-      throw new Error(error.error || "O arquivo não pôde ser aberto.");
+      throw new Error(error.error || t("O arquivo não pôde ser aberto."));
     }
     return response.blob();
   }, [session]);
@@ -369,7 +378,7 @@ export function useRoom() {
   }, [readFile]);
 
   const deleteFile = React.useCallback(async (entry: RoomEntry) => {
-    if (!session || entry.type !== "file") throw new Error("Este arquivo não está disponível.");
+    if (!session || entry.type !== "file") throw new Error(t("Este arquivo não está disponível."));
     const response = await fetch(`/api/rooms/${session.roomCode}/files/${encodeURIComponent(entry.id)}`, {
       method: "DELETE",
       headers: sessionHeaders(session),
@@ -392,7 +401,7 @@ export function useRoom() {
   }, [session]);
 
   const exportHistory = React.useCallback(async () => {
-    if (!session) throw new Error("Entre em uma Mesa primeiro.");
+    if (!session) throw new Error(t("Entre em uma Mesa primeiro."));
     const response = await fetch(`/api/rooms/${session.roomCode}/history`, {
       method: "GET",
       headers: sessionHeaders(session),
@@ -400,7 +409,7 @@ export function useRoom() {
     });
     if (!response.ok) {
       const body = await response.json().catch(() => ({})) as ApiError;
-      throw new Error(body.error || "O Histórico não pôde ser exportado.");
+      throw new Error(body.error || t("O Histórico não pôde ser exportado."));
     }
     const url = URL.createObjectURL(await response.blob());
     const anchor = document.createElement("a");
@@ -413,7 +422,7 @@ export function useRoom() {
   }, [session]);
 
   const clearOldHistory = React.useCallback(async (before: number) => {
-    if (!session) throw new Error("Entre em uma Mesa primeiro.");
+    if (!session) throw new Error(t("Entre em uma Mesa primeiro."));
     const response = await fetch(`/api/rooms/${session.roomCode}/history`, {
       method: "DELETE",
       headers: { "content-type": "application/json", ...sessionHeaders(session) },
@@ -427,7 +436,7 @@ export function useRoom() {
   }, [session]);
 
   const cleanupOrphanFiles = React.useCallback(async () => {
-    if (!session) throw new Error("Entre em uma Mesa primeiro.");
+    if (!session) throw new Error(t("Entre em uma Mesa primeiro."));
     const response = await fetch(`/api/rooms/${session.roomCode}/storage`, {
       method: "DELETE",
       headers: sessionHeaders(session),
@@ -436,7 +445,7 @@ export function useRoom() {
   }, [session]);
 
   const deleteCurrentRoom = React.useCallback(async () => {
-    if (!session) throw new Error("Entre em uma Mesa primeiro.");
+    if (!session) throw new Error(t("Entre em uma Mesa primeiro."));
     const deletingParticipantId = session.participantId;
     const response = await fetch(`/api/rooms/${session.roomCode}`, {
       method: "DELETE",
@@ -461,7 +470,7 @@ export function useRoom() {
       data.dice.some((die) => ![-1, 0, 1].includes(die)) ||
       !Number.isInteger(data.modifier) ||
       !Number.isInteger(data.total)
-    ) throw new Error("A Mesa devolveu uma rolagem inválida.");
+    ) throw new Error(t("A Mesa devolveu uma rolagem inválida."));
     return {
       id: entry.id,
       dice: data.dice,
@@ -474,7 +483,7 @@ export function useRoom() {
   }, [postEntry]);
 
   const decide = React.useCallback(async (participantId: string, status: "approved" | "rejected") => {
-    if (!session) throw new Error("Entre em uma Mesa primeiro.");
+    if (!session) throw new Error(t("Entre em uma Mesa primeiro."));
     const response = await fetch(`/api/rooms/${session.roomCode}`, {
       method: "PATCH",
       headers: { "content-type": "application/json", ...sessionHeaders(session) },
@@ -512,7 +521,7 @@ export function useRoom() {
 
   const switchRoom = React.useCallback(async (participantId: string) => {
     const remembered = savedRooms.find((item) => item.session.participantId === participantId);
-    if (!remembered) throw new Error("Esta Mesa não está mais guardada neste dispositivo.");
+    if (!remembered) throw new Error(t("Esta Mesa não está mais guardada neste dispositivo."));
     await activate(remembered.session);
   }, [activate, savedRooms]);
 

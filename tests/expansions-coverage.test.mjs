@@ -643,10 +643,10 @@ test("mantém busca, compartilhamento e navegação móvel em todas as fontes", 
   ]);
 
   assert.match(library, /Um livro principal\. Expansões quando forem úteis\./);
-  assert.match(library, /bookSearchDocuments/);
+  assert.match(library, /loadChapter/);
   assert.match(library, /searchChapters/);
   assert.match(library, /React\.useDeferredValue\(query\)/);
-  assert.match(library, /loadSearch\(language\)/);
+  assert.match(library, /loadSearch\(language, scope === "all" \? undefined : currentSource\)/);
   assert.match(library, /normalizeSearch/);
   assert.match(library, /NativeSelect/);
   assert.match(library, /rules:" \+ currentSource\.id \+ ":" \+ current\.id/);

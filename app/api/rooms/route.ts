@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
+import { limitRoomRequest, requestLimitResponse } from "@/lib/server/request-limits";
 import { createRoomSchema, joinRoomSchema } from "@/lib/room-contracts";
 import { createRoom, joinRoom, RoomHttpError } from "@/lib/server/rooms";
 
 function failure(error: unknown) {
+  const limited = requestLimitResponse(error);
+  if (limited) return limited;
   if (error instanceof RoomHttpError) {
     return NextResponse.json({ error: error.message }, { status: error.status });
   }
@@ -17,11 +20,13 @@ export async function POST(request: Request) {
     const body = await request.json();
     if (body?.action === "create") {
       const input = createRoomSchema.parse(body);
+      await limitRoomRequest(request, "create", input.token);
       const session = await createRoom(input);
       return NextResponse.json({ session }, { status: 201 });
     }
     if (body?.action === "join") {
       const input = joinRoomSchema.parse(body);
+      await limitRoomRequest(request, "join", input.token);
       const session = await joinRoom(input);
       return NextResponse.json({ session }, { status: 201 });
     }

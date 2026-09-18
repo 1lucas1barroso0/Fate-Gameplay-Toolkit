@@ -1,6 +1,9 @@
 "use client";
 
 import * as React from "react";
+import { t, useAppLanguage } from "@/lib/app-language";
+import { BackupReminder } from "@/components/backup-reminder";
+import { recordDiagnostic } from "@/lib/local-diagnostics";
 import { BookOpen, Dices, FileText, Sparkles, UsersRound } from "lucide-react";
 import dynamic from "next/dynamic";
 import { toast } from "sonner";
@@ -11,7 +14,7 @@ import { useCharacterStore } from "@/lib/use-character-store";
 import { useRoom } from "@/lib/use-room";
 import { useTableConfig } from "@/lib/use-table-config";
 
-const LoadingWorkspace = () => <div className="loading-panel">Abrindo…</div>;
+const LoadingWorkspace = () => <div className="loading-panel">{t("Abrindo…")}</div>;
 const CharacterSheet = dynamic(() => import("@/components/character-sheet").then((module) => module.CharacterSheet), { loading: LoadingWorkspace });
 const RulesLibrary = dynamic(() => import("@/components/rules-library").then((module) => module.RulesLibrary), { loading: LoadingWorkspace });
 const DiceRoller = dynamic(() => import("@/components/dice-roller").then((module) => module.DiceRoller), { loading: LoadingWorkspace });
@@ -21,6 +24,13 @@ const TableSettings = dynamic(() => import("@/components/table-settings").then((
 type Workspace = "ficha" | "regras" | "dados" | "salas" | "seu-fate";
 
 export function FateApp() {
+  const { language, setLanguage } = useAppLanguage();
+  React.useEffect(() => {
+    // recordDiagnostic checks consent without reading error text or private payloads.
+    const record = () => recordDiagnostic("app", "error");
+    window.addEventListener("error", record); window.addEventListener("unhandledrejection", record);
+    return () => { window.removeEventListener("error", record); window.removeEventListener("unhandledrejection", record); };
+  }, []);
   const characterStore = useCharacterStore();
   const roomStore = useRoom();
   const tableStore = useTableConfig();
@@ -56,7 +66,7 @@ export function FateApp() {
     try {
       localStorage.setItem("fate-gameplay-toolkit.workspace", next);
     } catch {
-      toast.info("A área foi aberta, mas o navegador não conseguiu lembrar esta preferência.");
+      toast.info(t("A área foi aberta, mas o navegador não conseguiu lembrar esta preferência."));
     }
     window.scrollTo({ top: 0, behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth" });
   };
@@ -130,30 +140,32 @@ export function FateApp() {
 
   return (
     <div className="app-shell" data-workspace={workspace}>
-      <a className="skip-link" href="#workspace-content">Pular para o conteúdo</a>
+      <a className="skip-link" href="#workspace-content">{t("Pular para o conteúdo")}</a>
       <header className="app-header">
+        <div className="language-switch" role="group" aria-label={language === "pt" ? "Idioma do site" : "Site language"}><button type="button" aria-pressed={language === "pt"} onClick={() => setLanguage("pt")}>PT-BR</button><button type="button" aria-pressed={language === "en"} onClick={() => setLanguage("en")}>English</button></div>
         <div className="brand-lockup" aria-label="Fate Gameplay Toolkit">
           <FateMark className="app-mark" />
-          <span><span className="brand-title"><b>Fate</b><strong>Gameplay Toolkit</strong></span><small>Fichas, regras e mesas do seu jeito</small></span>
+          <span><span className="brand-title"><b>Fate</b><strong>Gameplay Toolkit</strong></span><small>{t("Fichas, regras e mesas do seu jeito")}</small></span>
         </div>
       <div className="brand-story" aria-hidden="true">
-          <span>Uma ideia.<br /><b>Infinitas histórias.</b></span>
+          <span>{t("Uma ideia.")}<br /><b>{t("Infinitas histórias.")}</b></span>
           <div className="brand-dice"><i>+</i><i>−</i><i>0</i><i>+</i></div>
         </div>
       </header>
 
       <Tabs value={workspace} onValueChange={changeWorkspace}>
-        <nav className="main-nav" aria-label="Áreas da ferramenta">
+        <nav className="main-nav" aria-label={t("Áreas da ferramenta")}>
           <TabsList variant="line">
-            <TabsTrigger value="ficha"><FileText /> <span>Fichas</span></TabsTrigger>
-            <TabsTrigger value="regras"><BookOpen /> <span>Regras</span></TabsTrigger>
-            <TabsTrigger value="dados"><Dices /> <span>Dados</span></TabsTrigger>
-            <TabsTrigger value="salas"><UsersRound /> <span>Mesas</span></TabsTrigger>
-            <TabsTrigger value="seu-fate"><Sparkles /> <span>Seu Fate</span></TabsTrigger>
+            <TabsTrigger value="ficha"><FileText /> <span>{t("Fichas")}</span></TabsTrigger>
+            <TabsTrigger value="regras"><BookOpen /> <span>{t("Regras")}</span></TabsTrigger>
+            <TabsTrigger value="dados"><Dices /> <span>{t("Dados")}</span></TabsTrigger>
+            <TabsTrigger value="salas"><UsersRound /> <span>{t("Mesas")}</span></TabsTrigger>
+            <TabsTrigger value="seu-fate"><Sparkles /> <span>{t("Seu Fate")}</span></TabsTrigger>
           </TabsList>
         </nav>
 
         <main id="workspace-content">
+          <BackupReminder onOpen={() => changeWorkspace("seu-fate")} />
           <TabsContent value="ficha"><CharacterSheet store={characterStore} tableConfig={tableStore.config} rulesProfiles={tableStore.profiles} activeRulesProfileId={tableStore.activeProfileId} savedRooms={roomStore.savedRooms} onOpenLinkedRoom={openSavedRoom} onOpenLinkedRules={openRules} onOpenRulesSettings={openRulesSettings} onSelectRulesProfile={selectSheetRules} onImportTableConfig={tableStore.importConfig} /></TabsContent>
           <TabsContent value="regras"><RulesLibrary openReference={ruleTarget} roomReady={roomStore.roomReady} onShareRule={async (title, reference) => { await roomStore.postRule(title, reference); }} tableConfig={tableStore.config} onOpenSettings={() => openRulesSettings(tableStore.activeProfileId)} roomStore={roomStore} onOpenRooms={() => changeWorkspace("salas")} /></TabsContent>
           <TabsContent value="dados"><DiceRoller character={characterStore.activeCharacter} roomReady={roomStore.roomReady} onRoomRoll={roomStore.roll} tableConfig={tableStore.config} onOpenSettings={() => openRulesSettings(tableStore.activeProfileId)} /></TabsContent>
@@ -163,8 +175,8 @@ export function FateApp() {
       </Tabs>
 
       <footer className="app-footer">
-        <p>Ferramenta independente. Fate™ é marca registrada da Evil Hat Productions, LLC. Não há patrocínio nem endosso da Evil Hat.</p>
-        <p>Créditos, licenças e fontes de cada material estão identificados na Central de Regras.</p>
+        <p>{t("Ferramenta independente. Fate™ é marca registrada da Evil Hat Productions, LLC. Não há patrocínio nem endosso da Evil Hat.")}</p>
+        <p>{t("Créditos, licenças e fontes de cada material estão identificados na Central de Regras.")}</p>
       </footer>
       <Toaster position="bottom-center" richColors closeButton />
     </div>

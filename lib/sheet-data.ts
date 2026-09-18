@@ -74,6 +74,26 @@ export function sheetHasExtraMild(character: FateCharacter, config: TableConfig)
   return config.sheetStructure.stressTracks.some((track) => track.growth === "condensed" && track.skillId && hasExtraMild(character.skills[track.skillId] ?? 0));
 }
 
+/** Stable slots per track: raising or lowering a skill never moves written consequences. */
+export function sheetConsequences(character: FateCharacter, config: TableConfig) {
+  return config.sheetStructure.consequences.flatMap(item => {
+    if (item.availability === "always") return [{ ...item, legacy: false }];
+    const tracks = config.sheetStructure.stressTracks.filter(track => track.growth === "condensed" && track.skillId);
+    const slots = tracks.flatMap(track => {
+      const kind = track.id === "physicalStress" || track.skillId === "physique" ? "physical" as const
+        : track.id === "mentalStress" || track.skillId === "will" ? "mental" as const : "general" as const;
+      if (item.track && item.track !== "general" && item.track !== kind) return [];
+      const id = `${item.id}:${track.id}`;
+      // A filled slot remains visible even if a skill is subsequently lowered.
+      if (!hasExtraMild(character.skills[track.skillId] ?? 0) && !consequenceValue(character, id).trim()) return [];
+      return [{ ...item, id, track: kind, legacy: false }];
+    });
+    // Older versions stored a single untyped extra slot. Do not guess its type or lose its text.
+    if (consequenceValue(character, item.id).trim()) return [...slots, { ...item, track: "general" as const, legacy: true }];
+    return slots;
+  });
+}
+
 export function consequenceValue(character: FateCharacter, id: string) {
   if (id in character.optional.consequenceValues) return character.optional.consequenceValues[id] ?? "";
   return LEGACY_CONSEQUENCES.has(id) ? character.session.consequences[id as keyof FateCharacter["session"]["consequences"]] : "";

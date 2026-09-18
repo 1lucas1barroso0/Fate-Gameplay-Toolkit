@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { bigint, check, index, integer, pgTable, text, uniqueIndex } from "drizzle-orm/pg-core";
+import { bigint, check, index, integer, jsonb, pgTable, text, uniqueIndex } from "drizzle-orm/pg-core";
 
 export const rooms = pgTable(
   "rooms",
@@ -16,6 +16,17 @@ export const rooms = pgTable(
     uniqueIndex("rooms_request_id_unique").on(table.requestId),
   ],
 );
+
+export const requestLimits = pgTable("fate_request_limits", {
+  key: text("key").primaryKey(), started: bigint("started", { mode: "number" }).notNull(),
+  count: integer("count").notNull(), strikes: integer("strikes").notNull().default(0),
+  blockedUntil: bigint("blocked_until", { mode: "number" }).notNull().default(0),
+  expires: bigint("expires", { mode: "number" }).notNull(),
+});
+export const roomScenes = pgTable("room_scenes", {
+  roomId: text("room_id").primaryKey().references(() => rooms.id, { onDelete: "cascade" }),
+  revision: integer("revision").notNull(), scene: jsonb("scene"), updatedAt: bigint("updated_at", { mode: "number" }).notNull(),
+});
 
 export const participants = pgTable(
   "participants",

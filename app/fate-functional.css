@@ -1,4 +1,24 @@
 /* Functional controls follow the approved Fate visual system. */
+.optional-scene { margin-block: 1rem; border: 1px solid var(--border); border-radius: var(--radius); padding: 1rem; }
+.optional-scene > summary { cursor: pointer; font-weight: 700; padding: .4rem; }
+.scene-panel { margin-top: 1rem; }
+.scene-fields { display: grid; gap: 1rem; min-width: 0; }
+.scene-fields label { display: grid; gap: .4rem; min-width: 0; }
+.scene-fields:disabled { opacity: 1; }
+.scene-fields:disabled input, .scene-fields:disabled textarea { opacity: 1; }
+.scene-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,12rem),1fr)); gap: .8rem; align-items: end; }
+.scene-character { border: 1px solid var(--border); border-radius: var(--radius); padding: 1rem; display: grid; gap: .8rem; }
+.scene-track, .scene-actions, .backup-reminder { display: flex; flex-wrap: wrap; align-items: center; gap: .7rem; }
+.scene-actions { margin-block: 1rem; }
+.scene-track label { display: flex; align-items: center; }
+.backup-reminder { padding: 1rem; border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 1rem; }
+.backup-reminder > span { flex: 1 1 12rem; }
+.backup-preview { margin-top: 1rem; }
+.backup-preview > label { display: flex; gap: .75rem; align-items: start; padding: .75rem; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
+.backup-preview small { display: block; color: var(--muted-foreground); margin-top: .3rem; }
+.app-header > .language-switch { flex-wrap: wrap; }
+.app-header > .language-switch button { padding: .5rem .75rem; border: 1px solid var(--border); border-radius: var(--radius); }
+.app-header > .language-switch button[aria-pressed="true"] { background: var(--accent); color: var(--primary); }
 .reader-search-options, .reader-tools, .reading-status { display: flex; align-items: center; flex-wrap: wrap; gap: .65rem; font-family: var(--ui); }
 .reader-search-options { margin: .65rem 0 1.3rem; font-size: .8rem; }
 .reader-search-options [data-slot="native-select-wrapper"] { width: auto; min-width: 11rem; }
@@ -58,3 +78,10 @@
   .reading-library-dialog, .sheet-picker-dialog { padding: 1rem; }
   .reader-tools > button { width: 100%; justify-content: flex-start; }
 }
+
+/* Flexible writing spaces preserve paragraphs in both editing and reading modes. */
+.growing-rule-text { min-height: 7.5rem; line-height: 1.65; resize: vertical; overflow-wrap: anywhere; }
+.custom-sheet-section > div { grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr)); }
+.custom-sheet-section article, .custom-sheet-section .field-stack { min-width: 0; }
+.custom-sheet-section article p, .clean-custom-rules dd { white-space: pre-wrap; overflow-wrap: anywhere; }
+.consequence-definition { flex-wrap: wrap; }

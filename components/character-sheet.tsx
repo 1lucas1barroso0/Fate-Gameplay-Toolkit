@@ -1,5 +1,7 @@
 "use client";
 
+import { t, useAppLanguage, getAppLanguage, uiLabel } from "@/lib/app-language";
+
 import * as React from "react";
 import { SheetPicker } from "@/components/sheet-picker";
 import { BookOpen, ChevronDown, Copy, Download, Eye, FileUp, Link2, Pencil, Plus, RotateCcw, Settings2, Sparkles, Trash2, Undo2, UsersRound } from "lucide-react";
@@ -14,10 +16,11 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { GrowingTextarea } from "@/components/growing-textarea";
 import { Textarea } from "@/components/ui/textarea";
 import { adjectiveFor, safeJsonDownload, type FateCharacter, type SheetLinks } from "@/lib/fate";
 import type { RulesProfile } from "@/lib/rules-profiles";
-import { aspectValue, clearStress, consequenceValue, resourceValue, sheetHasExtraMild, stressBoxes, stressMarks, withAspectValue, withConsequenceValue, withResourceValue, withStressMark } from "@/lib/sheet-data";
+import { aspectValue, clearStress, consequenceValue, resourceValue, sheetHasExtraMild, sheetConsequences, stressBoxes, stressMarks, withAspectValue, withConsequenceValue, withResourceValue, withStressMark } from "@/lib/sheet-data";
 import { SKILL_PRESETS, getSkillDefinitions, type TableConfig } from "@/lib/table-config";
 import type { SavedRoom } from "@/lib/use-room";
 
@@ -37,27 +40,30 @@ type CharacterStore = {
 };
 
 const CONDITIONS = [
-  { severity: "Leve", value: 1, physical: "Arranhado", mental: "Assustado", key: "mild" },
-  { severity: "Moderado", value: 2, physical: "Machucado", mental: "Abalado", key: "moderate" },
-  { severity: "Severo", value: 3, physical: "Ferido", mental: "Desmoralizado", key: "severe" },
+  { get severity() { return t("Leve"); }, value: 1, get physical() { return t("Arranhado"); }, get mental() { return t("Assustado"); }, key: "mild" },
+  { get severity() { return t("Moderado"); }, value: 2, get physical() { return t("Machucado"); }, get mental() { return t("Abalado"); }, key: "moderate" },
+  { get severity() { return t("Severo"); }, value: 3, get physical() { return t("Ferido"); }, get mental() { return t("Desmoralizado"); }, key: "severe" },
 ] as const;
 
 const SHAPE_HINTS: Record<TableConfig["skillSystem"]["shape"], string> = {
-  pyramid: "Pirâmide: cada nível costuma ter uma Perícia a mais que o nível acima.",
-  diamond: "Diamante: poucos valores nos extremos e mais Perícias no meio.",
-  column: "Coluna: a mesma quantidade de Perícias em cada nível.",
-  free: "Livre com limite: distribua como fizer sentido, respeitando o teto escolhido.",
+  get pyramid() { return t("Pirâmide: cada nível costuma ter uma Perícia a mais que o nível acima."); },
+  get diamond() { return t("Diamante: poucos valores nos extremos e mais Perícias no meio."); },
+  get column() { return t("Coluna: a mesma quantidade de Perícias em cada nível."); },
+  get free() { return t("Livre com limite: distribua como fizer sentido, respeitando o teto escolhido."); },
 };
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
+  useAppLanguage();
   return <h2 className="section-bar">{children}</h2>;
 }
 
 function Counter({ value, min, max, onChange, label }: { value: number; min: number; max: number; onChange: (value: number) => void; label: string }) {
-  return <div className="counter" role="group" aria-label={label}><Button type="button" variant="outline" size="icon-sm" onClick={() => onChange(Math.max(min, value - 1))} aria-label={`Diminuir ${label}`}>−</Button><output aria-live="polite">{value}</output><Button type="button" variant="outline" size="icon-sm" onClick={() => onChange(Math.min(max, value + 1))} aria-label={`Aumentar ${label}`}>+</Button></div>;
+  useAppLanguage();
+  return <div className="counter" role="group" aria-label={label}><Button type="button" variant="outline" size="icon-sm" onClick={() => onChange(Math.max(min, value - 1))} aria-label={t(`Diminuir ${label}`, "Decrease " + String(label) + "")}>−</Button><output aria-live="polite">{value}</output><Button type="button" variant="outline" size="icon-sm" onClick={() => onChange(Math.min(max, value + 1))} aria-label={t(`Aumentar ${label}`, "Increase " + String(label) + "")}>+</Button></div>;
 }
 
 function Translation({ children, show }: { children?: string; show: boolean }) {
+  useAppLanguage();
   return show && children ? <small>{children}</small> : null;
 }
 
@@ -75,6 +81,7 @@ type CharacterSheetProps = {
 };
 
 export function CharacterSheet({ store, tableConfig, rulesProfiles, activeRulesProfileId, savedRooms, onOpenLinkedRoom, onOpenLinkedRules, onOpenRulesSettings, onSelectRulesProfile, onImportTableConfig }: CharacterSheetProps) {
+  useAppLanguage();
   const character = store.activeCharacter;
   const structure = tableConfig.sheetStructure;
   const [newName, setNewName] = React.useState("");
@@ -96,7 +103,7 @@ export function CharacterSheet({ store, tableConfig, rulesProfiles, activeRulesP
     try {
       localStorage.setItem("fate-gameplay-toolkit.sheet-mode", next);
     } catch {
-      toast.info("O modo foi alterado, mas o navegador não conseguiu lembrar esta preferência.");
+      toast.info(t("O modo foi alterado, mas o navegador não conseguiu lembrar esta preferência."));
     }
   };
 
@@ -119,8 +126,8 @@ export function CharacterSheet({ store, tableConfig, rulesProfiles, activeRulesP
   const skills = getSkillDefinitions(tableConfig);
   const extraMild = sheetHasExtraMild(character, tableConfig);
   const customSheetRules = tableConfig.customRules.filter((rule) => rule.enabled && rule.scopes.includes("sheet"));
-  const listName = tableConfig.skillSystem.preset === "custom" ? "Lista da Mesa" : SKILL_PRESETS[tableConfig.skillSystem.preset].name;
-  const visibleConsequences = structure.consequences.filter((item) => item.availability === "always" || extraMild);
+  const listName = tableConfig.skillSystem.preset === "custom" ? t("Lista da Mesa") : t(SKILL_PRESETS[tableConfig.skillSystem.preset].name);
+  const visibleConsequences = sheetConsequences(character, tableConfig);
 
   const changeOptional = (next: Partial<FateCharacter["optional"]>) => store.updateActive((current) => ({ ...current, optional: { ...current.optional, ...next } }));
   const setCustomValue = (ruleId: string, value: string) => store.updateActive((current) => ({ ...current, optional: { ...current.optional, customValues: { ...current.optional.customValues, [ruleId]: value } } }));
@@ -135,7 +142,7 @@ export function CharacterSheet({ store, tableConfig, rulesProfiles, activeRulesP
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
-    if (file.size > 5_000_000) return toast.error("Esse arquivo é grande demais para ser uma Ficha exportada por esta ferramenta.");
+    if (file.size > 5_000_000) return toast.error(t("Esse arquivo é grande demais para ser uma Ficha exportada por esta ferramenta."));
     try {
       const parsed = JSON.parse(await file.text()) as { sheet?: unknown; tableConfig?: unknown };
       const importedProfile = parsed && typeof parsed === "object" && parsed.tableConfig
@@ -145,9 +152,9 @@ export function CharacterSheet({ store, tableConfig, rulesProfiles, activeRulesP
         parsed && typeof parsed === "object" && "sheet" in parsed ? parsed.sheet : parsed,
         { rulesProfileId: importedProfile?.id ?? activeRulesProfileId },
       );
-      toast.success(`${imported.name || "Ficha"} foi importada sem substituir as demais${parsed?.tableConfig ? ", com sua configuração" : ""}.`);
+      toast.success(t(`${imported.name || t("Ficha")} foi importada sem substituir as demais${parsed?.tableConfig ? ", com sua configuração" : ""}.`, "" + String(imported.name || t("Ficha")) + " was imported without replacing other sheets" + String(parsed?.tableConfig ? ", com sua configuração" : "") + "."));
     } catch {
-      toast.error("O arquivo não é uma Ficha válida desta ferramenta.");
+      toast.error(t("O arquivo não é uma Ficha válida desta ferramenta."));
     }
   };
 
@@ -155,34 +162,34 @@ export function CharacterSheet({ store, tableConfig, rulesProfiles, activeRulesP
     try {
       const exportable = await store.exportCharacter(character);
       safeJsonDownload(`${character.name || "ficha"}.fate.json`, { format: "fate-sheet", bundleVersion: 4, exportedAt: Date.now(), sheet: exportable, tableConfig });
-      toast.success("Ficha exportada com sua imagem.");
+      toast.success(t("Ficha exportada com sua imagem."));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "A Ficha não pôde ser exportada.");
+      toast.error(error instanceof Error ? error.message : t("A Ficha não pôde ser exportada."));
     }
   };
   const resetScene = () => {
     store.updateActive((current) => clearStress(current, structure.stressTracks.map((track) => track.id)));
-    toast.success("Estresse limpo para a próxima cena.");
+    toast.success(t("Estresse limpo para a próxima cena."));
   };
   const startSession = () => {
     store.updateActive((current) => withResourceValue(current, "fatePoints", String(Math.max(current.refresh, current.session.fatePoints))));
-    toast.success("Pontos de Destino conferidos pela Recarga.");
+    toast.success(t("Pontos de Destino conferidos pela Recarga."));
   };
 
-  if (!store.hydrated) return <div className="loading-panel" aria-live="polite">Abrindo suas Fichas…</div>;
+  if (!store.hydrated) return <div className="loading-panel" aria-live="polite">{t("Abrindo suas Fichas…")}</div>;
 
   return (
     <section className="workspace-panel sheet-workspace" aria-labelledby="sheet-heading">
       <header className="workspace-toolbar sheet-toolbar">
-        <div className="sheet-workspace-title"><p className="eyebrow">Seu elenco, seu mundo</p><h1 id="sheet-heading">Fichas</h1></div>
+        <div className="sheet-workspace-title"><p className="eyebrow">{t("Seu elenco, seu mundo")}</p><h1 id="sheet-heading">{t("Fichas")}</h1></div>
         <div className="toolbar-actions sheet-toolbar-actions">
           <SheetPicker characters={store.characters} activeId={store.activeId} onSelect={store.setActiveId} rooms={savedRooms} profiles={rulesProfiles} />
-          <div className="sheet-mode-switch" role="group" aria-label="Modo da Ficha"><Button type="button" size="sm" variant={mode === "edit" ? "default" : "ghost"} aria-pressed={mode === "edit"} onClick={() => changeMode("edit")}><Pencil /> Editar</Button><Button type="button" size="sm" variant={mode === "view" ? "default" : "ghost"} aria-pressed={mode === "view"} onClick={() => changeMode("view")}><Eye /> Visualizar</Button></div>
+          <div className="sheet-mode-switch" role="group" aria-label={t("Modo da Ficha")}><Button type="button" size="sm" variant={mode === "edit" ? "default" : "ghost"} aria-pressed={mode === "edit"} onClick={() => changeMode("edit")}><Pencil /> {t("Editar")}</Button><Button type="button" size="sm" variant={mode === "view" ? "default" : "ghost"} aria-pressed={mode === "view"} onClick={() => changeMode("view")}><Eye /> {t("Visualizar")}</Button></div>
           {mode === "edit" && <div className="sheet-edit-actions">
-            <Dialog open={newOpen} onOpenChange={setNewOpen}><DialogTrigger asChild><Button className="sheet-new-action" size="sm"><Plus /> Nova Ficha</Button></DialogTrigger><DialogContent><DialogHeader><DialogTitle>Nova Ficha</DialogTitle><DialogDescription>Ela pode representar uma pessoa, criatura, veículo, lugar, organização ou qualquer outra coisa.</DialogDescription></DialogHeader><Label htmlFor="new-sheet-name">Nome da Ficha</Label><Input id="new-sheet-name" value={newName} maxLength={240} autoFocus onChange={(event) => setNewName(event.target.value)} /><DialogFooter><Button onClick={() => { store.addCharacter(newName.trim() || undefined, { rulesProfileId: activeRulesProfileId }); setNewName(""); setNewOpen(false); }}>Criar Ficha</Button></DialogFooter></DialogContent></Dialog>
-            <div className="sheet-utility-actions" role="group" aria-label="Ações desta Ficha">
-              <Button variant="outline" size="icon-sm" onClick={store.undo} aria-label="Desfazer última mudança"><Undo2 /></Button><Button variant="outline" size="icon-sm" onClick={store.duplicateCharacter} aria-label="Duplicar Ficha"><Copy /></Button><Button variant="outline" size="icon-sm" onClick={() => void exportSheet()} aria-label="Exportar Ficha"><Download /></Button><Button variant="outline" size="icon-sm" onClick={() => fileInput.current?.click()} aria-label="Importar Ficha"><FileUp /></Button><input ref={fileInput} type="file" accept="application/json,.json" hidden onChange={importFile} />
-              <AlertDialog><AlertDialogTrigger asChild><Button variant="outline" size="icon-sm" aria-label="Excluir Ficha"><Trash2 /></Button></AlertDialogTrigger><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Excluir esta Ficha?</AlertDialogTitle><AlertDialogDescription>Ela sairá deste dispositivo. Exporte antes se quiser guardar uma cópia completa.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction variant="destructive" onClick={store.deleteActive}>Excluir</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
+            <Dialog open={newOpen} onOpenChange={setNewOpen}><DialogTrigger asChild><Button className="sheet-new-action" size="sm"><Plus /> {t("Nova Ficha")}</Button></DialogTrigger><DialogContent><DialogHeader><DialogTitle>{t("Nova Ficha")}</DialogTitle><DialogDescription>{t("Ela pode representar uma pessoa, criatura, veículo, lugar, organização ou qualquer outra coisa.")}</DialogDescription></DialogHeader><Label htmlFor="new-sheet-name">{t("Nome da Ficha")}</Label><Input id="new-sheet-name" value={newName} maxLength={240} autoFocus onChange={(event) => setNewName(event.target.value)} /><DialogFooter><Button onClick={() => { store.addCharacter(newName.trim() || undefined, { rulesProfileId: activeRulesProfileId }); setNewName(""); setNewOpen(false); }}>{t("Criar Ficha")}</Button></DialogFooter></DialogContent></Dialog>
+            <div className="sheet-utility-actions" role="group" aria-label={t("Ações desta Ficha")}>
+              <Button variant="outline" size="icon-sm" onClick={store.undo} aria-label={t("Desfazer última mudança")}><Undo2 /></Button><Button variant="outline" size="icon-sm" onClick={store.duplicateCharacter} aria-label={t("Duplicar Ficha")}><Copy /></Button><Button variant="outline" size="icon-sm" onClick={() => void exportSheet()} aria-label={t("Exportar Ficha")}><Download /></Button><Button variant="outline" size="icon-sm" onClick={() => fileInput.current?.click()} aria-label={t("Importar Ficha")}><FileUp /></Button><input ref={fileInput} type="file" accept="application/json,.json" hidden onChange={importFile} />
+              <AlertDialog><AlertDialogTrigger asChild><Button variant="outline" size="icon-sm" aria-label={t("Excluir Ficha")}><Trash2 /></Button></AlertDialogTrigger><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>{t("Excluir esta Ficha?")}</AlertDialogTitle><AlertDialogDescription>{t("Ela sairá deste dispositivo. Exporte antes se quiser guardar uma cópia completa.")}</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>{t("Cancelar")}</AlertDialogCancel><AlertDialogAction variant="destructive" onClick={store.deleteActive}>{t("Excluir")}</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
             </div>
           </div>}
         </div>
@@ -191,69 +198,69 @@ export function CharacterSheet({ store, tableConfig, rulesProfiles, activeRulesP
       <div className="sheet-links-wrap">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button className="active-profile-strip table-link-strip" type="button" aria-label="Abrir Mesa ou regras desta Ficha">
+            <button className="active-profile-strip table-link-strip" type="button" aria-label={t("Abrir Mesa ou regras desta Ficha")}>
               <Link2 aria-hidden="true" />
-              <div><b>Mesa: {linkedRoom?.roomName || "Nenhuma"}</b><span>Regras: {linkedProfile?.config.profileName || "Fate Condensado"}</span></div>
+              <div><b>{t("Mesa:")} {linkedRoom?.roomName || "Nenhuma"}</b><span>{t("Regras:")} {linkedProfile?.config.profileName || t("Fate Condensado")}</span></div>
               <ChevronDown aria-hidden="true" />
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent className="sheet-links-menu" align="start">
             {linkedRoom
-              ? <DropdownMenuItem onSelect={() => void onOpenLinkedRoom(linkedRoom.session.participantId).catch((error) => toast.error(error instanceof Error ? error.message : "A Mesa não pôde ser aberta."))}><UsersRound /> Mesa: {linkedRoom.roomName || "Mesa vinculada"}</DropdownMenuItem>
-              : <DropdownMenuItem onSelect={() => setLinksOpen(true)}><UsersRound /> Mesa: escolher</DropdownMenuItem>}
-            {linkedProfile && <DropdownMenuItem onSelect={() => onOpenLinkedRules(linkedProfile.id)}><BookOpen /> Regras: {linkedProfile.config.profileName}</DropdownMenuItem>}
-            {mode === "edit" && <><DropdownMenuSeparator /><DropdownMenuItem onSelect={() => setLinksOpen(true)}><Settings2 /> Ajustar escolhas</DropdownMenuItem></>}
+              ? <DropdownMenuItem onSelect={() => void onOpenLinkedRoom(linkedRoom.session.participantId).catch((error) => toast.error(error instanceof Error ? error.message : t("A Mesa não pôde ser aberta.")))}><UsersRound /> {t("Mesa:")} {linkedRoom.roomName || t("Mesa vinculada")}</DropdownMenuItem>
+              : <DropdownMenuItem onSelect={() => setLinksOpen(true)}><UsersRound /> {t("Mesa: escolher")}</DropdownMenuItem>}
+            {linkedProfile && <DropdownMenuItem onSelect={() => onOpenLinkedRules(linkedProfile.id)}><BookOpen /> {t("Regras:")} {linkedProfile.config.profileName}</DropdownMenuItem>}
+            {mode === "edit" && <><DropdownMenuSeparator /><DropdownMenuItem onSelect={() => setLinksOpen(true)}><Settings2 /> {t("Ajustar escolhas")}</DropdownMenuItem></>}
           </DropdownMenuContent>
         </DropdownMenu>
 
         <Dialog open={linksOpen} onOpenChange={setLinksOpen}>
           <DialogContent className="sheet-links-dialog">
-            <DialogHeader className="sr-only"><DialogTitle>Escolhas da Ficha</DialogTitle><DialogDescription>Escolha a Mesa e as regras desta Ficha.</DialogDescription></DialogHeader>
-            <Label className="field-stack"><span>Mesa:</span><Select value={linkedRoom?.session.participantId ?? "none"} onValueChange={chooseRoom}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">Nenhuma</SelectItem>{savedRooms.map((room) => <SelectItem key={room.session.participantId} value={room.session.participantId}>{room.roomName || `Mesa ${room.session.roomCode}`}</SelectItem>)}</SelectContent></Select></Label>
-            <Label className="field-stack"><span>Regras:</span><Select value={linkedProfile?.id ?? activeRulesProfileId} onValueChange={chooseRules}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{rulesProfiles.map((profile) => <SelectItem key={profile.id} value={profile.id}>{profile.config.profileName}</SelectItem>)}</SelectContent></Select></Label>
+            <DialogHeader className="sr-only"><DialogTitle>{t("Escolhas da Ficha")}</DialogTitle><DialogDescription>{t("Escolha a Mesa e as regras desta Ficha.")}</DialogDescription></DialogHeader>
+            <Label className="field-stack"><span>{t("Mesa:")}</span><Select value={linkedRoom?.session.participantId ?? "none"} onValueChange={chooseRoom}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">{t("Nenhuma")}</SelectItem>{savedRooms.map((room) => <SelectItem key={room.session.participantId} value={room.session.participantId}>{room.roomName || t(`Mesa ${room.session.roomCode}`, "Table " + String(room.session.roomCode) + "")}</SelectItem>)}</SelectContent></Select></Label>
+            <Label className="field-stack"><span>{t("Regras:")}</span><Select value={linkedProfile?.id ?? activeRulesProfileId} onValueChange={chooseRules}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{rulesProfiles.map((profile) => <SelectItem key={profile.id} value={profile.id}>{profile.config.profileName}</SelectItem>)}</SelectContent></Select></Label>
           </DialogContent>
         </Dialog>
       </div>
 
       {mode === "view" ? <SheetView character={character} tableConfig={tableConfig} /> : <div className="sheet-editor">
-        {tableConfig.createDuringPlay && <aside className="friendly-note"><Sparkles aria-hidden="true" /><p><b>Pode começar pequeno.</b> Nome, conceito e um ponto forte já bastam. Complete a Ficha quando a história pedir.</p></aside>}
+        {tableConfig.createDuringPlay && <aside className="friendly-note"><Sparkles aria-hidden="true" /><p><b>{t("Pode começar pequeno.")}</b> {t("Nome, conceito e um ponto forte já bastam. Complete a Ficha quando a história pedir.")}</p></aside>}
 
         <section className="sheet-identity-editor" data-has-image={Boolean(character.optional.image)}>
           <SheetImage image={character.optional.image} name={character.name} shape={structure.imageShape} editable onChange={(image) => changeOptional({ image })} />
-          <div className="sheet-identity-fields"><Label className="field-stack"><span>{structure.labels.name}</span><Textarea className="sheet-name-field" value={character.name} maxLength={240} rows={1} onChange={(event) => store.updateActive((current) => ({ ...current, name: event.target.value }))} /></Label><Label className="field-stack"><span>{structure.labels.description}</span><Textarea value={character.description} maxLength={8000} rows={4} onChange={(event) => store.updateActive((current) => ({ ...current, description: event.target.value }))} /></Label></div>
+          <div className="sheet-identity-fields"><Label className="field-stack"><span>{t(structure.labels.name)}</span><Textarea className="sheet-name-field" value={character.name} maxLength={240} rows={1} onChange={(event) => store.updateActive((current) => ({ ...current, name: event.target.value }))} /></Label><Label className="field-stack"><span>{t(structure.labels.description)}</span><Textarea value={character.description} maxLength={8000} rows={4} onChange={(event) => store.updateActive((current) => ({ ...current, description: event.target.value }))} /></Label></div>
         </section>
 
         <div className="sheet-grid sheet-grid-top">
-          <section className="sheet-aspects-section"><SectionTitle>{structure.labels.aspects}</SectionTitle><div className="sheet-section-body aspect-list">{structure.aspects.length ? structure.aspects.map((aspect) => <Label key={aspect.id} className="field-stack"><span>{aspect.label} <Translation show={structure.showTranslations}>{aspect.translation}</Translation></span><Textarea value={aspectValue(character, aspect.id)} maxLength={4000} rows={2} onChange={(event) => store.updateActive((current) => withAspectValue(current, aspect.id, event.target.value))} /></Label>) : <div className="empty-editor-state">Nenhum tipo de Aspecto neste perfil. Você pode adicioná-los em “Seu Fate”.</div>}</div></section>
+          <section className="sheet-aspects-section"><SectionTitle>{t(structure.labels.aspects)}</SectionTitle><div className="sheet-section-body aspect-list">{structure.aspects.length ? structure.aspects.map((aspect) => <Label key={aspect.id} className="field-stack"><span>{uiLabel(aspect)} <Translation show={false}>{aspect.translation}</Translation></span><Textarea value={aspectValue(character, aspect.id)} maxLength={4000} rows={2} onChange={(event) => store.updateActive((current) => withAspectValue(current, aspect.id, event.target.value))} /></Label>) : <div className="empty-editor-state">{t("Nenhum tipo de Aspecto neste perfil. Você pode adicioná-los em “Seu Fate”.")}</div>}</div></section>
 
-          <section className="sheet-state-section"><SectionTitle>{structure.labels.state}</SectionTitle><div className="sheet-section-body vitals">
+          <section className="sheet-state-section"><SectionTitle>{t(structure.labels.state)}</SectionTitle><div className="sheet-section-body vitals">
             {structure.resources.length > 0 && <div className="resource-editor-grid">{structure.resources.map((resource) => {
               const raw = resourceValue(character, resource.id);
-              if (resource.kind === "check") return <Label key={resource.id} className="resource-check"><Checkbox checked={raw === "true"} onCheckedChange={(checked) => store.updateActive((current) => withResourceValue(current, resource.id, checked === true ? "true" : "false"))} /><span>{resource.label}<Translation show={structure.showTranslations}>{resource.translation}</Translation></span></Label>;
-              if (resource.kind === "text") return <Label key={resource.id} className="field-stack"><span>{resource.label}<Translation show={structure.showTranslations}>{resource.translation}</Translation></span><Input value={raw} maxLength={1200} onChange={(event) => store.updateActive((current) => withResourceValue(current, resource.id, event.target.value))} /></Label>;
+              if (resource.kind === "check") return <Label key={resource.id} className="resource-check"><Checkbox checked={raw === "true"} onCheckedChange={(checked) => store.updateActive((current) => withResourceValue(current, resource.id, checked === true ? "true" : "false"))} /><span>{uiLabel(resource)}<Translation show={false}>{resource.translation}</Translation></span></Label>;
+              if (resource.kind === "text") return <Label key={resource.id} className="field-stack"><span>{uiLabel(resource)}<Translation show={false}>{resource.translation}</Translation></span><GrowingTextarea value={raw} maxLength={1200} onChange={(event) => store.updateActive((current) => withResourceValue(current, resource.id, event.target.value))} /></Label>;
               const value = Math.max(resource.minimum, Math.min(resource.maximum, Number(raw) || 0));
-              return <div key={resource.id} className="resource-counter"><span className="field-label">{resource.label}<Translation show={structure.showTranslations}>{resource.translation}</Translation></span><Counter value={value} min={resource.minimum} max={resource.maximum} label={resource.label} onChange={(next) => store.updateActive((current) => withResourceValue(current, resource.id, String(next)))} /></div>;
+              return <div key={resource.id} className="resource-counter"><span className="field-label">{uiLabel(resource)}<Translation show={false}>{resource.translation}</Translation></span><Counter value={value} min={resource.minimum} max={resource.maximum} label={uiLabel(resource)} onChange={(next) => store.updateActive((current) => withResourceValue(current, resource.id, String(next)))} /></div>;
             })}</div>}
 
-            {structure.stressTracks.map((track) => { const count = stressBoxes(character, track); const marks = stressMarks(character, track.id); return <div className="stress-track" key={track.id}><span className="field-label">{track.label}<Translation show={structure.showTranslations}>{track.translation}</Translation></span><div className="stress-boxes">{Array.from({ length: count }, (_, index) => <Checkbox key={index} checked={marks[index] ?? false} onCheckedChange={(checked) => store.updateActive((current) => withStressMark(current, track.id, index, checked === true))} aria-label={`${track.label}, caixa ${index + 1}`} />)}</div></div>; })}
+            {structure.stressTracks.map((track) => { const count = stressBoxes(character, track); const marks = stressMarks(character, track.id); return <div className="stress-track" key={track.id}><span className="field-label">{uiLabel(track)}<Translation show={false}>{track.translation}</Translation></span><div className="stress-boxes">{Array.from({ length: count }, (_, index) => <Checkbox key={index} checked={marks[index] ?? false} onCheckedChange={(checked) => store.updateActive((current) => withStressMark(current, track.id, index, checked === true))} aria-label={`${uiLabel(track)}, caixa ${index + 1}`} />)}</div></div>; })}
 
-            {tableConfig.damageMode === "consequences" ? <div className="consequence-list">{visibleConsequences.map((item) => <Label key={item.id} className="consequence-field"><span><b>{item.value}</b><span>{item.label}{item.qualifier && <small>{item.qualifier}</small>}<Translation show={structure.showTranslations}>{item.translation}</Translation></span></span><Textarea value={consequenceValue(character, item.id)} maxLength={4000} rows={2} onChange={(event) => store.updateActive((current) => withConsequenceValue(current, item.id, event.target.value))} /></Label>)}</div> : <div className="conditions-panel"><header><div><b>Condições</b><span>{tableConfig.damageMode === "split-conditions" ? "duas caixas por condição" : "uma caixa por condição"}</span></div>{extraMild && <Label>Suave extra em<Select value={character.optional.conditionExtraTrack} onValueChange={(conditionExtraTrack) => changeOptional({ conditionExtraTrack: conditionExtraTrack as "physical" | "mental" })}><SelectTrigger size="sm"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="physical">Físico</SelectItem><SelectItem value="mental">Mental</SelectItem></SelectContent></Select></Label>}</header><div className="condition-grid">{CONDITIONS.flatMap((condition) => (["physical", "mental"] as const).map((track) => { const key = `${condition.key}:${track}`; const extra = extraMild && condition.key === "mild" && character.optional.conditionExtraTrack === track ? 2 : 0; const count = (tableConfig.damageMode === "split-conditions" ? 2 : 1) + extra; const label = condition[track]; return <div className="condition-row" key={key}><span><b>{condition.value}</b><span>{label}<small>{condition.severity} · {track === "physical" ? "físico" : "mental"}</small></span></span><div>{Array.from({ length: count }, (_, index) => <Checkbox key={index} checked={character.optional.conditionMarks[key]?.[index] ?? false} onCheckedChange={(checked) => toggleCondition(key, index, checked === true)} aria-label={`${label}, caixa ${index + 1}`} />)}</div></div>; }))}</div><p>Marque conforme a ficção pedir. A Mesa continua livre para abrir ou fechar exceções.</p></div>}
+            {tableConfig.damageMode === "consequences" ? <div className="consequence-list">{visibleConsequences.map((item) => <Label key={item.id} className="consequence-field"><span><b>{item.value}</b><span>{uiLabel(item)}{item.qualifier && <small>{t(item.qualifier)}</small>}{item.track === "physical" && <small>{t("Física", "Physical")}</small>}{item.track === "mental" && <small>{t("Mental", "Mental")}</small>}{item.legacy && <small>{t("Texto anterior preservado — passe para o tipo correspondente.", "Previous text preserved — move it to the matching type.")}</small>}<Translation show={false}>{item.translation}</Translation></span></span><Textarea value={consequenceValue(character, item.id)} maxLength={4000} rows={2} onChange={(event) => store.updateActive((current) => withConsequenceValue(current, item.id, event.target.value))} /></Label>)}</div> : <div className="conditions-panel"><header><div><b>{t("Condições")}</b><span>{tableConfig.damageMode === "split-conditions" ? t("duas caixas por condição") : t("uma caixa por condição")}</span></div>{extraMild && <Label>{t("Suave extra em")}<Select value={character.optional.conditionExtraTrack} onValueChange={(conditionExtraTrack) => changeOptional({ conditionExtraTrack: conditionExtraTrack as "physical" | "mental" })}><SelectTrigger size="sm"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="physical">{t("Físico")}</SelectItem><SelectItem value={"mental"}>{t("Mental")}</SelectItem></SelectContent></Select></Label>}</header><div className="condition-grid">{CONDITIONS.flatMap((condition) => (["physical", "mental"] as const).map((track) => { const key = `${condition.key}:${track}`; const extra = extraMild && condition.key === "mild" && character.optional.conditionExtraTrack === track ? 2 : 0; const count = (tableConfig.damageMode === "split-conditions" ? 2 : 1) + extra; const label = condition[track]; return <div className="condition-row" key={key}><span><b>{condition.value}</b><span>{label}<small>{condition.severity} · {track === "physical" ? t("físico") : "mental"}</small></span></span><div>{Array.from({ length: count }, (_, index) => <Checkbox key={index} checked={character.optional.conditionMarks[key]?.[index] ?? false} onCheckedChange={(checked) => toggleCondition(key, index, checked === true)} aria-label={`${label}, caixa ${index + 1}`} />)}</div></div>; }))}</div><p>{t("Marque conforme a ficção pedir. A Mesa continua livre para abrir ou fechar exceções.")}</p></div>}
 
-            {tableConfig.officialRules.extremeConsequences && <Label className="consequence-field optional-feature-field"><span><b>8</b><span>Extrema<small>Muda um Aspecto</small></span></span><Textarea value={character.optional.extremeConsequence} maxLength={4000} rows={2} onChange={(event) => changeOptional({ extremeConsequence: event.target.value })} /></Label>}
-            {(tableConfig.officialRules.scale || tableConfig.officialRules.weaponArmor) && <div className="sheet-options-row">{tableConfig.officialRules.scale && <Label className="field-stack"><span>Escala</span><Select value={character.optional.scale} onValueChange={(scale) => changeOptional({ scale: scale as FateCharacter["optional"]["scale"] })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="mundane">Mundano</SelectItem><SelectItem value="supernatural">Sobrenatural</SelectItem><SelectItem value="otherworldly">Extramundano</SelectItem><SelectItem value="legendary">Lendário</SelectItem><SelectItem value="divine">Divino</SelectItem></SelectContent></Select></Label>}{tableConfig.officialRules.weaponArmor && <><div><span className="field-label">Arma</span><Counter value={character.optional.weaponRating} min={0} max={4} label="nível de Arma" onChange={(weaponRating) => changeOptional({ weaponRating })} /></div><div><span className="field-label">Armadura</span><Counter value={character.optional.armorRating} min={0} max={4} label="nível de Armadura" onChange={(armorRating) => changeOptional({ armorRating })} /></div></>}</div>}
-            <div className="inline-actions"><Button variant="outline" size="sm" onClick={resetScene}><RotateCcw /> Encerrar cena</Button>{structure.resources.some((resource) => resource.id === "refresh") && structure.resources.some((resource) => resource.id === "fatePoints") && <Button variant="outline" size="sm" onClick={startSession}>Iniciar sessão</Button>}</div>
+            {tableConfig.officialRules.extremeConsequences && <Label className="consequence-field optional-feature-field"><span><b>8</b><span>{t("Extrema")}<small>{t("Muda um Aspecto")}</small></span></span><Textarea value={character.optional.extremeConsequence} maxLength={4000} rows={2} onChange={(event) => changeOptional({ extremeConsequence: event.target.value })} /></Label>}
+            {(tableConfig.officialRules.scale || tableConfig.officialRules.weaponArmor) && <div className="sheet-options-row">{tableConfig.officialRules.scale && <Label className="field-stack"><span>{t("Escala")}</span><Select value={character.optional.scale} onValueChange={(scale) => changeOptional({ scale: scale as FateCharacter["optional"]["scale"] })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="mundane">{t("Mundano")}</SelectItem><SelectItem value="supernatural">{t("Sobrenatural")}</SelectItem><SelectItem value="otherworldly">{t("Extramundano")}</SelectItem><SelectItem value="legendary">{t("Lendário")}</SelectItem><SelectItem value="divine">{t("Divino")}</SelectItem></SelectContent></Select></Label>}{tableConfig.officialRules.weaponArmor && <><div><span className="field-label">{t("Arma")}</span><Counter value={character.optional.weaponRating} min={0} max={4} label={t("nível de Arma")} onChange={(weaponRating) => changeOptional({ weaponRating })} /></div><div><span className="field-label">{t("Armadura")}</span><Counter value={character.optional.armorRating} min={0} max={4} label={t("nível de Armadura")} onChange={(armorRating) => changeOptional({ armorRating })} /></div></>}</div>}
+            <div className="inline-actions"><Button variant="outline" size="sm" onClick={resetScene}><RotateCcw /> {t("Encerrar cena")}</Button>{structure.resources.some((resource) => resource.id === "refresh") && structure.resources.some((resource) => resource.id === "fatePoints") && <Button variant="outline" size="sm" onClick={startSession}>{t("Iniciar sessão")}</Button>}</div>
           </div></section>
         </div>
 
         <div className="sheet-grid sheet-grid-bottom">
-          <section className="sheet-stunts-section"><SectionTitle>{structure.labels.stunts}</SectionTitle><div className="sheet-section-body stunt-list"><p className="section-hint">{structure.stunts.freeCount ? `As ${structure.stunts.freeCount} primeiras Façanhas são gratuitas no atual conjunto de regras.` : "Não há Façanhas gratuitas no atual conjunto de regras."}</p>{character.stunts.map((stunt, index) => <div className="stunt-row" key={index}><span aria-hidden="true">{index + 1}</span><Textarea value={stunt} maxLength={8000} rows={3} aria-label={`Façanha ${index + 1}`} onChange={(event) => store.updateActive((current) => { const stunts = [...current.stunts]; stunts[index] = event.target.value; return { ...current, stunts }; })} /><Button variant="ghost" size="icon-sm" aria-label={`Remover Façanha ${index + 1}`} onClick={() => store.updateActive((current) => ({ ...current, stunts: current.stunts.filter((_, stuntIndex) => stuntIndex !== index) }))}><Trash2 /></Button></div>)}{character.stunts.length < structure.stunts.maximum && <Button variant="outline" size="sm" onClick={() => store.updateActive((current) => ({ ...current, stunts: [...current.stunts, ""] }))}><Plus /> Adicionar Façanha</Button>}{!character.stunts.length && <p className="empty-editor-state">Nenhuma Façanha ainda.</p>}</div></section>
+          <section className="sheet-stunts-section"><SectionTitle>{t(structure.labels.stunts)}</SectionTitle><div className="sheet-section-body stunt-list"><p className="section-hint">{structure.stunts.freeCount ? t(`As ${structure.stunts.freeCount} primeiras Façanhas são gratuitas no atual conjunto de regras.`, "The first " + String(structure.stunts.freeCount) + " stunts are free under the current rules profile.") : t("Não há Façanhas gratuitas no atual conjunto de regras.")}</p>{character.stunts.map((stunt, index) => <div className="stunt-row" key={index}><span aria-hidden="true">{index + 1}</span><Textarea value={stunt} maxLength={8000} rows={3} aria-label={t(`Façanha ${index + 1}`, "Stunt " + String(index + 1) + "")} onChange={(event) => store.updateActive((current) => { const stunts = [...current.stunts]; stunts[index] = event.target.value; return { ...current, stunts }; })} /><Button variant="ghost" size="icon-sm" aria-label={t(`Remover Façanha ${index + 1}`, "Remove stunt " + String(index + 1) + "")} onClick={() => store.updateActive((current) => ({ ...current, stunts: current.stunts.filter((_, stuntIndex) => stuntIndex !== index) }))}><Trash2 /></Button></div>)}{character.stunts.length < structure.stunts.maximum && <Button variant="outline" size="sm" onClick={() => store.updateActive((current) => ({ ...current, stunts: [...current.stunts, ""] }))}><Plus /> {t("Adicionar Façanha")}</Button>}{!character.stunts.length && <p className="empty-editor-state">{t("Nenhuma Façanha ainda.")}</p>}</div></section>
 
-          <section className="sheet-skills-section"><SectionTitle>{structure.labels.skills}</SectionTitle><div className="sheet-section-body skill-list"><p className="section-hint"><b>{listName}.</b> {SHAPE_HINTS[tableConfig.skillSystem.shape]}</p>{skills.map((skill) => { const rating = character.skills[skill.id] ?? 0; const choices = Array.from({ length: tableConfig.skillSystem.ratingCeiling - tableConfig.skillSystem.ratingFloor + 1 }, (_, index) => tableConfig.skillSystem.ratingCeiling - index); if (!choices.includes(rating)) choices.push(rating); choices.sort((a, b) => b - a); return <div className="skill-row" key={skill.id}><Select value={String(rating)} onValueChange={(value) => store.updateActive((current) => ({ ...current, skills: { ...current.skills, [skill.id]: Number(value) } }))}><SelectTrigger size="sm" aria-label={`Nível de ${skill.pt}`}><SelectValue>{rating >= 0 ? `+${rating}` : rating}</SelectValue></SelectTrigger><SelectContent>{choices.map((value) => <SelectItem key={value} value={String(value)}>{value >= 0 ? `+${value}` : value} · {adjectiveFor(value)}</SelectItem>)}</SelectContent></Select><span><b>{skill.pt}</b><Translation show={structure.showTranslations}>{skill.en}</Translation></span></div>; })}{!skills.length && <div className="empty-editor-state">Nenhuma Perícia neste conjunto. Adicione as que o jogo precisa em “Seu Fate”.</div>}</div></section>
+          <section className="sheet-skills-section"><SectionTitle>{t(structure.labels.skills)}</SectionTitle><div className="sheet-section-body skill-list"><p className="section-hint"><b>{listName}.</b> {SHAPE_HINTS[tableConfig.skillSystem.shape]}</p>{skills.map((skill) => { const rating = character.skills[skill.id] ?? 0; const choices = Array.from({ length: tableConfig.skillSystem.ratingCeiling - tableConfig.skillSystem.ratingFloor + 1 }, (_, index) => tableConfig.skillSystem.ratingCeiling - index); if (!choices.includes(rating)) choices.push(rating); choices.sort((a, b) => b - a); return <div className="skill-row" key={skill.id}><Select value={String(rating)} onValueChange={(value) => store.updateActive((current) => ({ ...current, skills: { ...current.skills, [skill.id]: Number(value) } }))}><SelectTrigger size="sm" aria-label={t(`Nível de ${uiLabel(skill)}`, "Rating of " + String(uiLabel(skill)) + "")}><SelectValue>{rating >= 0 ? `+${rating}` : rating}</SelectValue></SelectTrigger><SelectContent>{choices.map((value) => <SelectItem key={value} value={String(value)}>{value >= 0 ? `+${value}` : value} · {adjectiveFor(value, getAppLanguage())}</SelectItem>)}</SelectContent></Select><span><b>{uiLabel(skill)}</b><Translation show={false}>{skill.en}</Translation></span></div>; })}{!skills.length && <div className="empty-editor-state">{t("Nenhuma Perícia neste conjunto. Adicione as que o jogo precisa em “Seu Fate”.")}</div>}</div></section>
 
-          <section className="sheet-notes-section"><SectionTitle>{structure.labels.notes}</SectionTitle><div className="sheet-section-body"><Textarea className="notes-textarea" value={character.notes} maxLength={16000} rows={6} aria-label={structure.labels.notes} onChange={(event) => store.updateActive((current) => ({ ...current, notes: event.target.value }))} /></div></section>
+          <section className="sheet-notes-section"><SectionTitle>{t(structure.labels.notes)}</SectionTitle><div className="sheet-section-body"><Textarea className="notes-textarea" value={character.notes} maxLength={16000} rows={6} aria-label={t(structure.labels.notes)} onChange={(event) => store.updateActive((current) => ({ ...current, notes: event.target.value }))} /></div></section>
         </div>
 
-        {customSheetRules.length > 0 && <section className="custom-sheet-section" aria-labelledby="custom-sheet-heading"><header><Sparkles /><div><p className="eyebrow">Regras da Mesa</p><h2 id="custom-sheet-heading">Espaço do seu jogo</h2></div><Button variant="ghost" size="sm" onClick={() => linkedProfile && onOpenRulesSettings(linkedProfile.id)}><Settings2 /> Ajustar</Button></header><div>{customSheetRules.map((rule) => <article key={rule.id}><div><b>{rule.name}</b><p>{rule.description}</p></div>{rule.field && (rule.field.type === "check" ? <Label className="custom-check-field"><Checkbox checked={character.optional.customValues[rule.id] === "true"} onCheckedChange={(checked) => setCustomValue(rule.id, checked === true ? "true" : "false")} /><span>{rule.field.label}<small>{rule.field.hint}</small></span></Label> : <Label className="field-stack"><span>{rule.field.label}{rule.field.hint && <small>{rule.field.hint}</small>}</span><Input type={rule.field.type === "number" ? "number" : "text"} value={character.optional.customValues[rule.id] ?? ""} maxLength={1200} onChange={(event) => setCustomValue(rule.id, event.target.value)} /></Label>)}</article>)}</div></section>}
+        {customSheetRules.length > 0 && <section className="custom-sheet-section" aria-labelledby="custom-sheet-heading"><header><Sparkles /><div><p className="eyebrow">{t("Regras da Mesa")}</p><h2 id="custom-sheet-heading">{t("Espaço do seu jogo")}</h2></div><Button variant="ghost" size="sm" onClick={() => linkedProfile && onOpenRulesSettings(linkedProfile.id)}><Settings2 /> {t("Ajustar")}</Button></header><div>{customSheetRules.map((rule) => <article key={rule.id}><div><b>{rule.name}</b><p>{rule.description}</p></div>{rule.field && (rule.field.type === "check" ? <Label className="custom-check-field"><Checkbox checked={character.optional.customValues[rule.id] === "true"} onCheckedChange={(checked) => setCustomValue(rule.id, checked === true ? "true" : "false")} /><span>{rule.field.label}<small>{rule.field.hint}</small></span></Label> : <Label className="field-stack"><span>{rule.field.label}{rule.field.hint && <small>{rule.field.hint}</small>}</span>{rule.field.type === "text" ? <GrowingTextarea value={character.optional.customValues[rule.id] ?? ""} maxLength={16000} onChange={(event) => setCustomValue(rule.id, event.target.value)} /> : <Input type="number" value={character.optional.customValues[rule.id] ?? ""} onChange={(event) => setCustomValue(rule.id, event.target.value)} />}</Label>)}</article>)}</div></section>}
       </div>}
     </section>
   );

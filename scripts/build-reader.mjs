@@ -30,13 +30,19 @@ for (const source of sources) {
     if (!chapter.html?.pt?.trim() || !chapter.html?.en?.trim()) throw new Error(`Missing bilingual text: ${source.id}/${chapter.id}`);
     const { html, ...details } = chapter;
     const wordCount = { pt: plain(html.pt).split(/\s+/).length, en: plain(html.en).split(/\s+/).length };
-    item.chapters.push({ ...details, wordCount });
+    const chapterFiles = {};
+    for (const language of ['pt', 'en']) chapterFiles[language] = await asset(`${source.id}-${chapter.id}-${language}`, { sourceId: source.id, chapterId: chapter.id, language, html: html[language] });
+    item.chapters.push({ ...details, wordCount, files: chapterFiles });
     for (const language of ['pt', 'en']) {
       item.wordCountByLanguage[language] += wordCount[language];
       indexes[language].push({ sourceId: source.id, chapterId: chapter.id, title: chapter.title[language], sourceTitle: source.title[language], text: plain(html[language]) });
     }
   }
-  for (const language of ['pt', 'en']) item.files[language] = await asset(`${source.id}-${language}`, { sourceId: source.id, language, chapters: Object.fromEntries(chapters.map(chapter => [chapter.id, chapter.html[language]])) });
+  item.search = {};
+  for (const language of ['pt', 'en']) {
+    item.files[language] = await asset(`${source.id}-${language}`, { sourceId: source.id, language, chapters: Object.fromEntries(chapters.map(chapter => [chapter.id, chapter.html[language]])) });
+    item.search[language] = await asset(`${source.id}-search-${language}`, indexes[language].filter(doc => doc.sourceId === source.id));
+  }
   catalog.sources.push(item);
 }
 for (const language of ['pt', 'en']) catalog.search[language] = await asset(`search-${language}`, indexes[language]);

@@ -1,5 +1,6 @@
 import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
 import { NextResponse } from "next/server";
+import { limitRoomRequest, requestLimitResponse } from "@/lib/server/request-limits";
 import { roomCodeSchema, roomFileUploadSchema } from "@/lib/room-contracts";
 import { MAX_ROOM_FILE_BYTES } from "@/lib/room-contracts";
 import {
@@ -29,6 +30,7 @@ export async function POST(request: Request, context: RouteContext) {
       request,
       onBeforeGenerateToken: async (pathname, clientPayload) => {
         const input = roomFileUploadSchema.parse(JSON.parse(clientPayload || "{}"));
+        await limitRoomRequest(request, "upload", input.token);
         return {
           addRandomSuffix: false,
           maximumSizeInBytes: MAX_ROOM_FILE_BYTES,
@@ -41,6 +43,8 @@ export async function POST(request: Request, context: RouteContext) {
     });
     return NextResponse.json(response);
   } catch (error) {
+    const limited = requestLimitResponse(error);
+    if (limited) return limited;
     console.error("room-file-upload-failed", error);
     return NextResponse.json({ error: errorMessage(error) }, { status: error instanceof RoomHttpError ? error.status : 400 });
   }

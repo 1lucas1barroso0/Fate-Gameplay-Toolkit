@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { limitRoomRequest, requestLimitResponse } from "@/lib/server/request-limits";
 import { roomCodeSchema, roomDecisionSchema, roomEntrySchema } from "@/lib/room-contracts";
 import {
   addRoomEntry,
@@ -11,6 +12,8 @@ import {
 type RouteContext = { params: Promise<{ code: string }> };
 
 function failure(error: unknown) {
+  const limited = requestLimitResponse(error);
+  if (limited) return limited;
   if (error instanceof RoomHttpError) {
     return NextResponse.json({ error: error.message }, { status: error.status });
   }
@@ -52,6 +55,7 @@ export async function POST(request: Request, context: RouteContext) {
     const contentLength = Number(request.headers.get("content-length") ?? 0);
     if (contentLength > 20_000) throw new RoomHttpError("Pedido grande demais.", 413);
     const input = roomEntrySchema.parse(await request.json());
+    await limitRoomRequest(request, "write");
     const entry = await addRoomEntry(request, await roomCode(context), input);
     return NextResponse.json({ entry }, { status: 201 });
   } catch (error) {
@@ -62,6 +66,7 @@ export async function POST(request: Request, context: RouteContext) {
 export async function PATCH(request: Request, context: RouteContext) {
   try {
     const input = roomDecisionSchema.parse(await request.json());
+    await limitRoomRequest(request, "write");
     const result = await decideRoomParticipant(
       request,
       await roomCode(context),

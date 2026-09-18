@@ -224,7 +224,7 @@ async function initializeSchema(sql: RoomSql) {
   ]);
 }
 
-async function getRoomDb() {
+export async function getRoomDb() {
   const sql = rawRoomDb();
   schemaReady ??= initializeSchema(sql).catch((error) => {
     schemaReady = null;
@@ -281,7 +281,7 @@ async function databaseUsedBytes(sql: RoomSql, fresh = false) {
   return bytes;
 }
 
-async function assertDatabaseWritable(sql: RoomSql) {
+export async function assertDatabaseWritable(sql: RoomSql) {
   const bytes = await databaseUsedBytes(sql);
   if (bytes >= PROJECT_DATABASE_CRITICAL_BYTES) {
     throw new RoomHttpError("O armazenamento compartilhado está em nível crítico. Exporte ou limpe dados antigos antes de publicar algo novo.", 507);
@@ -526,7 +526,7 @@ async function authorizeCredentials(participantId: string, token: string, roomCo
   return row;
 }
 
-async function authorize(request: Request, roomCode: string) {
+export async function authorize(request: Request, roomCode: string) {
   const { participantId, token } = readCredentials(request);
   return authorizeCredentials(participantId, token, roomCode);
 }

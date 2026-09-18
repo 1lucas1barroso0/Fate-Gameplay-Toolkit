@@ -93,7 +93,7 @@ const optionalCharacterSchema = z.object({
   scale: z.enum(["mundane", "supernatural", "otherworldly", "legendary", "divine"]),
   weaponRating: z.number().int().min(0).max(4),
   armorRating: z.number().int().min(0).max(4),
-  customValues: z.record(z.string(), z.string().max(1200)),
+  customValues: z.record(z.string(), z.string().max(16000)),
   image: sheetImageSchema.nullable().default(null),
   aspectValues: z.record(z.string(), z.string().max(4000)).default({}),
   stressMarks: z.record(z.string(), z.array(z.boolean()).max(30)).default({}),

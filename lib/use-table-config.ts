@@ -1,4 +1,5 @@
 "use client";
+import { t } from "@/lib/app-language";
 
 import * as React from "react";
 import { useTheme } from "next-themes";
@@ -96,7 +97,7 @@ export function useTableConfig() {
         if (previous && previous !== serialized) localStorage.setItem(BACKUP_KEY, previous);
         else if (!localStorage.getItem(BACKUP_KEY)) localStorage.setItem(BACKUP_KEY, serialized);
         localStorage.setItem(STORE_KEY, serialized);
-        if (localStorage.getItem(STORE_KEY) !== serialized) throw new Error("A gravação não foi confirmada.");
+        if (localStorage.getItem(STORE_KEY) !== serialized) throw new Error(t("A gravação não foi confirmada."));
         localStorage.removeItem(PENDING_KEY);
         localStorage.removeItem(LEGACY_STORE_KEY);
         localStorage.removeItem(LEGACY_BACKUP_KEY);
@@ -128,15 +129,15 @@ export function useTableConfig() {
       : current);
   }, []);
 
-  const addProfile = React.useCallback((name = "Novo conjunto") => {
-    if (collection.profiles.length >= MAX_RULES_PROFILES) throw new Error("Você já guardou muitos conjuntos de regras neste dispositivo.");
+  const addProfile = React.useCallback((name = t("Novo conjunto")) => {
+    if (collection.profiles.length >= MAX_RULES_PROFILES) throw new Error(t("Você já guardou muitos conjuntos de regras neste dispositivo."));
     const profile = createRulesProfile({ ...createDefaultTableConfig(), profileName: name });
     setCollection((current) => ({ ...current, activeProfileId: profile.id, profiles: [...current.profiles, profile] }));
     return profile;
   }, [collection.profiles.length]);
 
   const duplicateProfile = React.useCallback((profileId = collection.activeProfileId) => {
-    if (collection.profiles.length >= MAX_RULES_PROFILES) throw new Error("Você já guardou muitos conjuntos de regras neste dispositivo.");
+    if (collection.profiles.length >= MAX_RULES_PROFILES) throw new Error(t("Você já guardou muitos conjuntos de regras neste dispositivo."));
     const source = collection.profiles.find((profile) => profile.id === profileId) ?? activeProfile;
     const profile = duplicateRulesProfile(source);
     setCollection((current) => ({ ...current, activeProfileId: profile.id, profiles: [...current.profiles, profile] }));
@@ -166,7 +167,7 @@ export function useTableConfig() {
   }, [collection]);
 
   const importConfig = React.useCallback((input: unknown) => {
-    if (collection.profiles.length >= MAX_RULES_PROFILES) throw new Error("Você já guardou muitos conjuntos de regras neste dispositivo.");
+    if (collection.profiles.length >= MAX_RULES_PROFILES) throw new Error(t("Você já guardou muitos conjuntos de regras neste dispositivo."));
     const profile = createRulesProfile(normalizeTableConfig(input));
     setCollection((current) => ({ ...current, activeProfileId: profile.id, profiles: [...current.profiles, profile] }));
     return profile;
@@ -183,7 +184,7 @@ export function useTableConfig() {
       return;
     }
     const legacy = localStorage.getItem(LEGACY_BACKUP_KEY);
-    if (!legacy) throw new Error("Não há uma versão anterior para recuperar.");
+    if (!legacy) throw new Error(t("Não há uma versão anterior para recuperar."));
     const restored = tableConfigSchema.parse(JSON.parse(legacy));
     setCollection(createRulesProfileCollection(restored));
   }, []);

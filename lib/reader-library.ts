@@ -1,10 +1,11 @@
 import catalogData from '@/content/reader-catalog.json';
 import terminology from '@/content/fate-terminology.json';
 import { stripHtml, type Language } from '@/lib/fate';
+import { recordDiagnostic } from '@/lib/local-diagnostics';
 
 export type Localized = Record<Language, string>;
-export type ReaderChapter = { id: string; title: Localized; label: Localized; mode: 'principal' | 'full-srd' | 'book-map' | 'official-guide-summary' | 'editorial-summary'; slugs?: Localized; wordCount: Record<Language, number> };
-export type ReaderSource = { id: string; title: Localized; shortTitle: Localized; year: number; kind: 'principal' | 'guide' | 'expansion'; tags: Localized[]; description: Localized; contentNote: Localized; officialUrl: string; referenceUrl: Localized; licenseUrl: string; licenseUrlByLanguage?: Localized; errataUrl?: string; attribution: Record<Language, string[]>; chapters: ReaderChapter[]; files: Localized; wordCountByLanguage: Record<Language, number> };
+export type ReaderChapter = { id: string; title: Localized; label: Localized; mode: 'principal' | 'full-srd' | 'book-map' | 'official-guide-summary' | 'editorial-summary'; slugs?: Localized; wordCount: Record<Language, number>; files: Localized };
+export type ReaderSource = { id: string; title: Localized; shortTitle: Localized; year: number; kind: 'principal' | 'guide' | 'expansion'; tags: Localized[]; description: Localized; contentNote: Localized; officialUrl: string; referenceUrl: Localized; licenseUrl: string; licenseUrlByLanguage?: Localized; errataUrl?: string; attribution: Record<Language, string[]>; chapters: ReaderChapter[]; files: Localized; search: Localized; wordCountByLanguage: Record<Language, number> };
 export const readerCatalog = catalogData as { version: number; precedence: Localized; sources: ReaderSource[]; search: Localized };
 export type ReaderLocation = { sourceId: string; chapterId: string; language: Language; anchor?: string };
 export type BookText = { sourceId: string; language: Language; chapters: Record<string, string> };
@@ -34,6 +35,24 @@ export const readingKey = (location: ReaderLocation) => [location.sourceId, loca
 // Bound session memory; immutable URLs also benefit from the browser HTTP cache.
 const books = new Map<string, Promise<BookText>>();
 const searches = new Map<string, Promise<SearchDocument[]>>();
+export type ChapterText = { sourceId: string; chapterId: string; language: Language; html: string };
+const chapterRequests = new Map<string, Promise<ChapterText>>();
+export function loadChapter(source: ReaderSource, chapter: ReaderChapter, language: Language): Promise<ChapterText> {
+  const url = chapter.files[language];
+  const existing = chapterRequests.get(url);
+  if (existing) return existing;
+  const start = Date.now();
+  const request = fetch(url, { signal: AbortSignal.timeout(30000) }).then(async response => {
+    if (!response.ok) throw Error('chapter-load');
+    const value = await response.json() as ChapterText;
+    if (value.sourceId !== source.id || value.chapterId !== chapter.id || value.language !== language || typeof value.html !== 'string') throw Error('chapter-invalid');
+    recordDiagnostic('reader', 'ok', Date.now() - start);
+    return value;
+  }).catch(error => { chapterRequests.delete(url); recordDiagnostic('reader', 'error', Date.now() - start); throw error; });
+  chapterRequests.set(url, request);
+  while (chapterRequests.size > 12) chapterRequests.delete(chapterRequests.keys().next().value!);
+  return request;
+}
 export function loadBook(source: ReaderSource, language: Language): Promise<BookText> {
   const url = source.files[language];
   const cached = books.get(url);
@@ -48,14 +67,14 @@ export function loadBook(source: ReaderSource, language: Language): Promise<Book
   if (books.size > 4) books.delete(books.keys().next().value!);
   return request;
 }
-export function loadSearch(language: Language): Promise<SearchDocument[]> {
-  const url = readerCatalog.search[language];
+export function loadSearch(language: Language, source?: ReaderSource): Promise<SearchDocument[]> {
+  const url = source ? source.search[language] : readerCatalog.search[language];
   const cached = searches.get(url);
   if (cached) return cached;
   const request = fetch(url, { signal: AbortSignal.timeout(30000) }).then(async response => {
     if (!response.ok) throw new Error('search-load');
     const value: unknown = await response.json();
-    if (!Array.isArray(value) || !value.every(doc => typeof doc.text === 'string' && typeof doc.title === 'string' && validReading({ ...doc, language }))) throw new Error('search-invalid');
+    if (!Array.isArray(value) || !value.every(doc => typeof doc.text === 'string' && typeof doc.title === 'string' && (!source || doc.sourceId === source.id) && validReading({ ...doc, language }))) throw new Error('search-invalid');
     for (let index = 0; index < value.length; index += 16) {
       value.slice(index, index + 16).forEach(normalizedDocument);
       await new Promise(resolve => setTimeout(resolve, 0));
@@ -63,6 +82,7 @@ export function loadSearch(language: Language): Promise<SearchDocument[]> {
     return value as SearchDocument[];
   }).catch(error => { searches.delete(url); throw error; });
   searches.set(url, request);
+  while (searches.size > 4) searches.delete(searches.keys().next().value!);
   return request;
 }
 export function normalizeSearch(text: string) {
