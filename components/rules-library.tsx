@@ -39,7 +39,6 @@ const interfaceCopy = {
     principalEyebrow: "Fate Condensado · regra principal",
     heading: "Central de Regras",
     introduction: "Comece com o livro. Mude só o que ajudar a mesa.",
-    languageAria: "Idioma das regras",
     browseBooks: "Escolher outro livro",
     readingNow: "Na sua leitura",
     chapterPosition: (index: number, total: number) => `Capítulo ${index} de ${total}`,
@@ -109,7 +108,6 @@ const interfaceCopy = {
     principalEyebrow: "Fate Condensed · principal ruleset",
     heading: "Rules Library",
     introduction: "Start with the book. Change only what helps the table.",
-    languageAria: "Rules language",
     browseBooks: "Choose another book",
     readingNow: "Now reading",
     chapterPosition: (index: number, total: number) => `Chapter ${index} of ${total}`,
@@ -580,7 +578,6 @@ export function RulesLibrary({
     setQuery("");
   };
   const chooseResult = (source: ReaderSource, chapter: ReaderChapter) => { navigate({ sourceId: source.id, chapterId: chapter.id, language }); setQuery(""); };
-  const changeLanguage = (next: Language) => navigate({ sourceId, chapterId, language: next }, "restore");
   const openCondensedOptions = () => navigate({ sourceId: sources[0].id, chapterId: sources[0].chapters.find(chapter => chapter.id === "opcionais")?.id ?? sources[0].chapters[0].id, language });
 
   React.useEffect(() => {
@@ -656,10 +653,6 @@ export function RulesLibrary({
           <p>{copy.introduction}</p>
         </div>
         <div className="toolbar-actions">
-          <div className="language-switch" role="group" aria-label={copy.languageAria}>
-            <Button size="sm" variant={language === "pt" ? "default" : "outline"} aria-pressed={language === "pt"} onClick={() => changeLanguage("pt")}>PT-BR</Button>
-            <Button size="sm" variant={language === "en" ? "default" : "outline"} aria-pressed={language === "en"} onClick={() => changeLanguage("en")}>English</Button>
-          </div>
           <Sheet>
             <SheetTrigger asChild><Button variant="outline" size="sm"><BookOpen /> {copy.quick}</Button></SheetTrigger>
             <SheetContent className="quick-sheet">
