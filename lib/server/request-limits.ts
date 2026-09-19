@@ -3,6 +3,8 @@ import { getSql } from "@/db";
 
 // Shared by all function instances; no new service, raw IP or bearer token stored.
 export const REQUEST_LIMITS = {
+  register: { ip: 8, session: 3, window: 3600 },
+  login: { ip: 80, session: 10, window: 600 },
   create: { ip: 12, session: 6, window: 3600 },
   join: { ip: 60, session: 20, window: 600 },
   write: { ip: 360, session: 60, window: 60 },

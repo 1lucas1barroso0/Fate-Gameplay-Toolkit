@@ -1,4 +1,7 @@
 "use client";
+
+import { WORKSPACE_EVENT, workspaceStorage as localStorage } from "@/lib/workspace-storage";
+
 import { useSyncExternalStore } from "react";
 import messages from "@/content/interface-en.json";
 
@@ -20,6 +23,11 @@ function subscribe(listener: () => void) {
     initialized = true;
     try { language = localStorage.getItem(key) === "en" ? "en" : "pt"; } catch { /* Portuguese is the default. */ }
     document.documentElement.lang = language === "pt" ? "pt-BR" : "en";
+    window.addEventListener(WORKSPACE_EVENT, () => {
+      try { language = localStorage.getItem(key) === "en" ? "en" : "pt"; } catch { language = "pt"; }
+      document.documentElement.lang = language === "pt" ? "pt-BR" : "en";
+      notify();
+    });
     window.addEventListener("storage", event => {
       if (event.key === key) { language = event.newValue === "en" ? "en" : "pt"; document.documentElement.lang = language === "pt" ? "pt-BR" : "en"; notify(); }
     });

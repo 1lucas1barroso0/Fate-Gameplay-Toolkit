@@ -1,4 +1,7 @@
 "use client";
+
+import { workspaceStorage as localStorage } from "@/lib/workspace-storage";
+
 import { useAppLanguage, getAppLanguage, setAppLanguage } from "@/lib/app-language";
 
 import * as React from "react";

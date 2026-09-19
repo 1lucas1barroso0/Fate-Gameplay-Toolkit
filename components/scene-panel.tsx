@@ -1,4 +1,7 @@
 "use client";
+
+import { workspaceSceneStorage as sessionStorage } from "@/lib/workspace-storage";
+
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

@@ -1,4 +1,7 @@
 "use client";
+
+import { WORKSPACE_EVENT, WORKSPACE_FLUSH, workspaceStorage as localStorage } from "@/lib/workspace-storage";
+
 import { t } from "@/lib/app-language";
 
 import * as React from "react";
@@ -66,7 +69,7 @@ export function useCharacterStore() {
 
   React.useEffect(() => {
     if (!hydrated) return;
-    const handle = window.setTimeout(() => {
+    const save = (event?: Event) => {
       const payload: StoredCharacters = { version: 1, activeId, characters };
       const serialized = JSON.stringify(payload);
       if (serialized === lastSerialized.current) return;
@@ -75,11 +78,28 @@ export function useCharacterStore() {
         setLastSavedAt(Date.now());
         setStorageRevision((current) => current + 1);
       } catch {
+        event?.preventDefault();
         toast.error("O dispositivo recusou o salvamento. Exporte a ficha para não perder mudanças.");
       }
-    }, 220);
-    return () => window.clearTimeout(handle);
+    };
+    const handle = window.setTimeout(save, 220);
+    window.addEventListener(WORKSPACE_FLUSH, save);
+    return () => { window.clearTimeout(handle); window.removeEventListener(WORKSPACE_FLUSH, save); };
   }, [activeId, characters, hydrated]);
+
+  React.useEffect(() => {
+    const reload = () => {
+      const stored = parseStoredCharacters(localStorage.getItem(CHARACTER_STORE_KEY));
+      if (!stored || JSON.stringify(stored) === lastSerialized.current) return;
+      lastSerialized.current = JSON.stringify(stored);
+      setCharacters(stored.characters);
+      setActiveId(stored.activeId);
+      undoStack.current = [];
+      setStorageRevision(current => current + 1);
+    };
+    window.addEventListener(WORKSPACE_EVENT, reload);
+    return () => window.removeEventListener(WORKSPACE_EVENT, reload);
+  }, []);
 
   const activeCharacter =
     characters.find((character) => character.id === activeId) ?? characters[0];

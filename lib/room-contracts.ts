@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "zod/v3";
 import {
   MAX_ROOM_FILE_BYTES,
   MAX_ROOM_FILES,

@@ -1,5 +1,8 @@
 "use client";
 
+import { WORKSPACE_EVENT, workspaceStorage as localStorage } from "@/lib/workspace-storage";
+
+
 import { t, useAppLanguage, getAppLanguage, uiLabel } from "@/lib/app-language";
 
 import * as React from "react";
@@ -98,8 +101,10 @@ export function DiceRoller({
 
   React.useEffect(() => {
     const clear = () => setHistory([]);
+    const reload = () => setHistory(readHistory());
     window.addEventListener("fate:roll-history-cleared", clear);
-    return () => window.removeEventListener("fate:roll-history-cleared", clear);
+    window.addEventListener(WORKSPACE_EVENT, reload);
+    return () => { window.removeEventListener("fate:roll-history-cleared", clear); window.removeEventListener(WORKSPACE_EVENT, reload); };
   }, []);
 
   React.useEffect(() => {

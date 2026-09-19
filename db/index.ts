@@ -1,8 +1,8 @@
-import { neon } from "@neondatabase/serverless";
+import { neon, type NeonQueryFunction } from "@neondatabase/serverless";
 import { drizzle } from "drizzle-orm/neon-http";
 import * as schema from "./schema";
 
-let sqlClient: ReturnType<typeof neon> | null = null;
+let sqlClient: NeonQueryFunction<false, false> | null = null;
 let database: ReturnType<typeof createDb> | null = null;
 
 export function getSql() {

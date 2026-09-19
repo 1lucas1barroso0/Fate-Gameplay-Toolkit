@@ -1,5 +1,5 @@
-import { FateApp } from "@/components/fate-app";
+import { AccountProvider } from "@/components/account-provider";
 
 export default function Home() {
-  return <FateApp />;
+  return <AccountProvider />;
 }

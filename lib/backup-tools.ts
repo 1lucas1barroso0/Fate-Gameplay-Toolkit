@@ -1,4 +1,5 @@
-import { z } from "zod";
+import { workspaceStorage as localStorage } from "@/lib/workspace-storage";
+import { z } from "zod/v3";
 import { characterSchema, type FateCharacter } from "@/lib/fate";
 import { rulesProfileSchema, type RulesProfile } from "@/lib/rules-profiles";
 

@@ -1,8 +1,12 @@
 "use client";
 
+import { workspaceStorage as localStorage } from "@/lib/workspace-storage";
+
+
 import * as React from "react";
 import { t, useAppLanguage } from "@/lib/app-language";
 import { BackupReminder } from "@/components/backup-reminder";
+import { AccountButton } from "@/components/account-dialog";
 import { recordDiagnostic } from "@/lib/local-diagnostics";
 import { BookOpen, Dices, FileText, Sparkles, UsersRound } from "lucide-react";
 import dynamic from "next/dynamic";
@@ -147,10 +151,10 @@ export function FateApp() {
           <FateMark className="app-mark" />
           <span><span className="brand-title"><b>Fate</b><strong>Gameplay Toolkit</strong></span><small>{t("Fichas, regras e mesas do seu jeito")}</small></span>
         </div>
-      <div className="brand-story" aria-hidden="true">
+      <div className="header-account"><div className="brand-story" aria-hidden="true">
           <span>{t("Uma ideia.")}<br /><b>{t("Infinitas histórias.")}</b></span>
           <div className="brand-dice"><i>+</i><i>−</i><i>0</i><i>+</i></div>
-        </div>
+        </div><AccountButton /></div>
       </header>
 
       <Tabs value={workspace} onValueChange={changeWorkspace}>

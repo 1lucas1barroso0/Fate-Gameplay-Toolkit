@@ -1,4 +1,5 @@
 'use client';
+import { WORKSPACE_EVENT, workspaceStorage as localStorage } from "@/lib/workspace-storage";
 import * as React from 'react';
 import { EMPTY_READING, parseReading, READING_KEY, type ReadingState } from '@/lib/reading-state';
 
@@ -16,10 +17,12 @@ function hydrate() {
 }
 function subscribe(listener: () => void) {
   listeners.add(listener);
-  if (!snapshot.ready) { hydrate(); listener(); }
+  if (listeners.size === 1) { hydrate(); listener(); }
   const storage = (event: StorageEvent) => { if (event.key === READING_KEY) { hydrate(); emit(); } };
   window.addEventListener('storage', storage);
-  return () => { listeners.delete(listener); window.removeEventListener('storage', storage); };
+  const reload = () => { hydrate(); emit(); };
+  window.addEventListener(WORKSPACE_EVENT, reload);
+  return () => { listeners.delete(listener); window.removeEventListener('storage', storage); window.removeEventListener(WORKSPACE_EVENT, reload); };
 }
 export function updateReading(update: (state: ReadingState) => ReadingState) {
   if (!snapshot.ready) hydrate();

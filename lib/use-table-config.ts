@@ -1,4 +1,7 @@
 "use client";
+
+import { WORKSPACE_EVENT, WORKSPACE_FLUSH, workspaceStorage as localStorage } from "@/lib/workspace-storage";
+
 import { t } from "@/lib/app-language";
 
 import * as React from "react";
@@ -65,7 +68,7 @@ export function useTableConfig() {
     const handle = window.setTimeout(() => {
       try {
         const stored = readStoredCollection();
-        if (stored) setCollection(stored);
+        if (stored) { lastSerialized.current = JSON.stringify(stored); setCollection(stored); }
       } catch {
         toast.error("As regras salvas estavam inválidas. O padrão do livro foi mantido.");
       } finally {
@@ -88,7 +91,7 @@ export function useTableConfig() {
 
   React.useEffect(() => {
     if (!hydrated) return;
-    const handle = window.setTimeout(() => {
+    const save = (event?: Event) => {
       const serialized = JSON.stringify(collection);
       if (serialized === lastSerialized.current) return;
       try {
@@ -104,11 +107,25 @@ export function useTableConfig() {
         lastSerialized.current = serialized;
         setLastSavedAt(Date.now());
       } catch {
+        event?.preventDefault();
         toast.error("Não foi possível guardar as regras neste dispositivo.");
       }
-    }, 220);
-    return () => window.clearTimeout(handle);
+    };
+    const handle = window.setTimeout(save, 220);
+    window.addEventListener(WORKSPACE_FLUSH, save);
+    return () => { window.clearTimeout(handle); window.removeEventListener(WORKSPACE_FLUSH, save); };
   }, [collection, hydrated]);
+
+  React.useEffect(() => {
+    const reload = () => {
+      const stored = readStoredCollection();
+      if (!stored || JSON.stringify(stored) === lastSerialized.current) return;
+      lastSerialized.current = JSON.stringify(stored);
+      setCollection(stored);
+    };
+    window.addEventListener(WORKSPACE_EVENT, reload);
+    return () => window.removeEventListener(WORKSPACE_EVENT, reload);
+  }, []);
 
   const update = React.useCallback((updater: (current: TableConfig) => TableConfig) => {
     setCollection((current) => ({

@@ -1,3 +1,4 @@
+import { imageDatabaseName } from "@/lib/workspace-storage";
 import {
   isLegacySheetImage,
   isStoredSheetImage,
@@ -43,7 +44,7 @@ export class LocalStorageQuotaError extends Error {
   }
 }
 
-let databasePromise: Promise<IDBDatabase> | null = null;
+const databases = new Map<string, Promise<IDBDatabase>>();
 
 function requestResult<T>(request: IDBRequest<T>) {
   return new Promise<T>((resolve, reject) => {
@@ -72,8 +73,11 @@ export function openSheetImageDatabase() {
   if (typeof indexedDB === "undefined") {
     return Promise.reject(new Error("Este navegador não oferece IndexedDB."));
   }
-  databasePromise ??= new Promise<IDBDatabase>((resolve, reject) => {
-    const request = indexedDB.open(SHEET_IMAGE_DB_NAME, SHEET_IMAGE_DB_VERSION);
+  const name = imageDatabaseName(SHEET_IMAGE_DB_NAME);
+  let databasePromise = databases.get(name);
+  if (!databasePromise) {
+  databasePromise = new Promise<IDBDatabase>((resolve, reject) => {
+    const request = indexedDB.open(name, SHEET_IMAGE_DB_VERSION);
     request.onupgradeneeded = () => {
       const database = request.result;
       if (!database.objectStoreNames.contains(SHEET_IMAGE_STORE_NAME)) {
@@ -88,22 +92,37 @@ export function openSheetImageDatabase() {
       resolve(database);
     };
     request.onerror = () => {
-      databasePromise = null;
+      databases.delete(name);
       reject(request.error ?? new Error("Não foi possível abrir o armazenamento de imagens."));
     };
     request.onblocked = () => {
-      databasePromise = null;
+      databases.delete(name);
       reject(new Error("Feche outras abas antigas do Fate para atualizar o armazenamento de imagens."));
     };
   });
+  databases.set(name, databasePromise);
+  }
   return databasePromise;
 }
 
 export async function resetSheetImageDatabaseConnection() {
-  const pending = databasePromise;
-  databasePromise = null;
-  const database = await pending?.catch(() => null);
-  database?.close();
+  const pending = [...databases.values()];
+  databases.clear();
+  for (const promise of pending) (await promise.catch(() => null))?.close();
+}
+
+export async function deleteAccountImageDatabase(accountId: string) {
+  const name = `${SHEET_IMAGE_DB_NAME}-account-${accountId}`;
+  const pending = databases.get(name);
+  databases.delete(name);
+  (await pending?.catch(() => null))?.close();
+  if (typeof indexedDB === "undefined") return;
+  await new Promise<void>((resolve, reject) => {
+    const request = indexedDB.deleteDatabase(name);
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+    request.onblocked = () => resolve(); // Other tabs close their connections on versionchange.
+  });
 }
 
 export async function hashSheetImage(blob: Blob) {

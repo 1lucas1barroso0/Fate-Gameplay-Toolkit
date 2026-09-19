@@ -1,3 +1,4 @@
+import { workspaceStorage as localStorage } from "@/lib/workspace-storage";
 import {
   characterSchema,
   isLegacySheetImage,

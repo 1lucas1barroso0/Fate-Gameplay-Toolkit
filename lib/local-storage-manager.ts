@@ -1,3 +1,4 @@
+import { workspaceStorage as localStorage, workspaceSessionStorage as sessionStorage } from "@/lib/workspace-storage";
 import { estimateSheetImageBytes, type StorageManagerLike } from "@/lib/sheet-image-store";
 import {
   LOCAL_STORAGE_CRITICAL_RATIO,

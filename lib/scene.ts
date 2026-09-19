@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "zod/v3";
 
 export const sceneSchema = z.object({
   title: z.string().trim().max(120),

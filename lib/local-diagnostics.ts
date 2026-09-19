@@ -1,3 +1,4 @@
+import { workspaceStorage as localStorage } from "@/lib/workspace-storage";
 // Opt-in, on-device only. Closed enums prevent private content entering reports.
 export type DiagnosticArea = "sync" | "upload" | "reader" | "backup" | "app";
 export type DiagnosticEvent = { area: DiagnosticArea; result: "ok" | "error"; at: number; durationMs?: number; status?: number };

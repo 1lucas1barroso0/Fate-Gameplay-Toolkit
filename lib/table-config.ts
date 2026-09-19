@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "zod/v3";
 import { SKILLS, createUuid } from "@/lib/fate";
 
 export type RuleScope = "sheet" | "dice" | "rooms" | "rules";

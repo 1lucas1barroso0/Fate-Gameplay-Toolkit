@@ -1,4 +1,6 @@
 @import "tailwindcss";
+
+
 @import "tw-animate-css";
 @import "../vendor/shadcn-tailwind-4.13.0.css";
 
@@ -2105,3 +2107,26 @@ select,
   .rule-prose .rule-table-cluster { grid-template-columns: 1fr; }
   .rule-prose .rule-table-scroll { width: 100%; }
 }
+
+.header-account { display: flex; align-items: center; justify-content: flex-end; gap: 1rem; }
+.header-account .brand-dice { display: none; }
+.account-button { white-space: nowrap; }
+.account-attention { width: .5rem; height: .5rem; border-radius: 50%; background: #f3b45e; }
+.account-dialog { max-height: calc(100dvh - 2rem); overflow-y: auto; text-align: left; }
+.account-form, .account-key, .account-conflict { display: grid; gap: .7rem; }
+.account-form label { font-size: .88rem; font-weight: 600; }
+.account-form p, .account-key p, .account-conflict p { font-size: .88rem; line-height: 1.55; }
+.account-checkbox { display: flex; align-items: flex-start; gap: .65rem; padding: .4rem 0; line-height: 1.5; }
+.account-checkbox input { margin-top: .25rem; width: 1rem; height: 1rem; flex-shrink: 0; accent-color: var(--user-accent); }
+.account-hint { color: var(--muted-foreground); margin: 0; }
+.account-sync { display: flex; gap: .7rem; align-items: center; padding: .7rem 0; font-size: .9rem; }
+.account-sync svg { flex-shrink: 0; width: 1.2rem; }
+.account-links { display: flex; justify-content: space-between; flex-wrap: wrap; }
+.account-error { color: var(--destructive); font-size: .88rem; line-height: 1.5; }
+.account-success { color: var(--foreground); font-size: .88rem; }
+.account-delete-link { color: var(--destructive); margin-top: .4rem; }
+.account-key, .account-conflict { padding: 1rem; border: 1px solid var(--border); border-radius: .6rem; }
+.account-key code { overflow-wrap: anywhere; font-size: .9rem; user-select: all; }
+.account-loading { min-height: 65vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1rem; }
+@media (max-width: 900px) { .header-account .brand-story { display: none; } }
+@media (max-width: 640px) { .app-header { flex-wrap: wrap; } .header-account { margin-left: auto; } .account-button { height: 2.4rem; } }

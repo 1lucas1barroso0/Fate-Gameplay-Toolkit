@@ -1,5 +1,5 @@
 import { del, get, head, list } from "@vercel/blob";
-import { z } from "zod";
+import { z } from "zod/v3";
 import { getSql } from "@/db";
 import type {
   RoomEntry,
@@ -400,7 +400,7 @@ export async function createRoom(input: {
   personName: string;
   requestId: string;
   token: string;
-}) {
+}, accountId?: string) {
   const sql = await getRoomDb();
   await assertDatabaseWritable(sql);
   const tokenHash = await hashRoomToken(input.token);
@@ -414,7 +414,7 @@ export async function createRoom(input: {
   for (let attempt = 0; attempt < 12; attempt += 1) {
     const code = makeRoomCode();
     try {
-      const inserted = await sql`
+      const insertion = sql`
         WITH inserted_room AS (
           INSERT INTO rooms (id, code, name, request_id, created_at)
           SELECT ${roomId}, ${code}, ${input.roomName}, ${input.requestId}, ${now}
@@ -428,6 +428,11 @@ export async function createRoom(input: {
         FROM inserted_room
         RETURNING id
       `;
+      const inserted = accountId ? (await sql.transaction([
+        insertion,
+        sql`INSERT INTO fate_account_membership (user_id,participant_id)
+          SELECT ${accountId},id FROM participants WHERE id=${participantId}`,
+      ]))[0] : await insertion;
       if (rows<{ id: string }>(inserted).length) {
         return { roomCode: code, participantId, token: input.token } satisfies RoomSession;
       }
@@ -447,7 +452,7 @@ export async function joinRoom(input: {
   personName: string;
   requestId: string;
   token: string;
-}) {
+}, accountId?: string) {
   const sql = await getRoomDb();
   await assertDatabaseWritable(sql);
   const tokenHash = await hashRoomToken(input.token);
@@ -475,8 +480,10 @@ export async function joinRoom(input: {
       ON CONFLICT (request_id) DO NOTHING
       RETURNING id
     `,
+      ...(accountId ? [sql`INSERT INTO fate_account_membership (user_id,participant_id)
+        SELECT ${accountId},id FROM participants WHERE id=${participantId}`] : []),
     ]);
-    const inserted = transaction.at(-1);
+    const inserted = transaction[1];
     if (!rows<{ id: string }>(inserted).length) {
       const replay = await findSessionByRequest(sql, input.requestId, tokenHash);
       if (replay) return { ...replay, token: input.token };
@@ -815,7 +822,7 @@ async function queueBlobCleanup(
   `;
 }
 
-async function drainBlobCleanupQueue(sql: RoomSql, limit = 25, roomCode?: string) {
+export async function drainBlobCleanupQueue(sql: RoomSql, limit = 25, roomCode?: string) {
   const result = roomCode
     ? await sql`
         SELECT pathname, attempts FROM blob_cleanup_queue

@@ -1,5 +1,8 @@
 "use client";
 
+import { WORKSPACE_EVENT, currentAccountId, workspaceStorage as localStorage, workspaceSessionStorage as sessionStorage } from "@/lib/workspace-storage";
+
+
 import * as React from "react";
 import { t, getAppLanguage } from "@/lib/app-language";
 import { recordDiagnostic } from "@/lib/local-diagnostics";
@@ -126,6 +129,16 @@ export function useRoom() {
   React.useEffect(() => { activeSession.current = session; }, [session]);
 
   React.useEffect(() => {
+    const reload = () => {
+      const rooms = readRooms();
+      setSavedRooms(rooms.saved);
+      setSession(current => rooms.saved.find(room => room.session.participantId === current?.participantId)?.session ?? null);
+    };
+    window.addEventListener(WORKSPACE_EVENT, reload);
+    return () => window.removeEventListener(WORKSPACE_EVENT, reload);
+  }, []);
+
+  React.useEffect(() => {
     const handle = window.setTimeout(() => {
       try {
         const rooms = readRooms();
@@ -207,7 +220,7 @@ export function useRoom() {
       const token = newToken();
       const response = await fetch("/api/rooms", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", ...(currentAccountId() ? { "x-fate-account": currentAccountId()! } : {}) },
         body: JSON.stringify({
           action: "create",
           roomName,
@@ -231,7 +244,7 @@ export function useRoom() {
       const token = newToken();
       const response = await fetch("/api/rooms", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", ...(currentAccountId() ? { "x-fate-account": currentAccountId()! } : {}) },
         body: JSON.stringify({
           action: "join",
           roomCode,
