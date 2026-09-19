@@ -12,7 +12,7 @@ import type { TableConfigStore } from "@/lib/use-table-config";
 import type { FateCharacter } from "@/lib/fate";
 
 export function BackupSettings({ characters, tables }: { characters: CharacterStore; tables: TableConfigStore }) {
-  const { t, locale } = useAppLanguage();
+  const { t } = useAppLanguage();
   const [reminder, setReminder] = React.useState({ days: 0, lastExportAt: 0, snoozedUntil: 0 });
   const [incoming, setIncoming] = React.useState<BackupBundle | null>(null);
   const [current, setCurrent] = React.useState<FateCharacter[]>([]);
@@ -70,9 +70,9 @@ export function BackupSettings({ characters, tables }: { characters: CharacterSt
   }
   return <section className="storage-action-section" id="backup-settings">
     <h3>{t("Backups e recuperação", "Backups and recovery")}</h3>
-    <p>{reminder.lastExportAt ? t("Última exportação iniciada: ", "Last export started: ") + new Date(reminder.lastExportAt).toLocaleString(locale) : t("Nenhuma exportação registrada neste navegador.", "No export recorded in this browser.")} {t("Confira se o arquivo foi salvo na sua pasta de downloads.", "Check that the file was saved in your downloads folder.")}</p>
+    <p>{t("As cópias vão para a pasta de downloads. Abra o arquivo depois de exportar para confirmar que ele foi salvo.", "Backups go to your downloads folder. Open the file after exporting to make sure it was saved.")}</p>
     <label>{t("Lembrete enquanto o site estiver aberto", "Reminder while the site is open")} <select value={reminder.days} onChange={e => { const next = { ...reminder, days: Number(e.target.value), snoozedUntil: Date.now() + Number(e.target.value) * 86400000 }; try { writeBackupReminder(next); setReminder(next); } catch { toast.error(t("Não foi possível salvar o lembrete.", "Could not save the reminder.")); } }}><option value={0}>{t("Desativado", "Off")}</option><option value={7}>{t("A cada 7 dias", "Every 7 days")}</option><option value={30}>{t("A cada 30 dias", "Every 30 days")}</option></select></label>
-    <p>{t("Importe uma cópia completa para comparar antes de confirmar. Fichas diferentes entram como novas cópias; as iguais são ignoradas. Credenciais e dados do servidor não são restaurados por este arquivo.", "Import a full backup to compare before confirming. Changed sheets become new copies; identical ones are skipped. This file does not restore credentials or server data.")}</p>
+    <p>{t("Escolha uma cópia para conferir tudo antes de importar. Fichas diferentes entram como novas cópias; as iguais são ignoradas. O acesso às Mesas não muda.", "Choose a backup to review everything before importing. Changed sheets become new copies; identical ones are skipped. Access to your tables does not change.")}</p>
     <Button variant="outline" disabled={busy} onClick={() => input.current?.click()}>{t("Comparar e importar backup", "Compare and import backup")}</Button><input type="file" accept=".json,application/json" hidden ref={input} onChange={e => void preview(e.target.files?.[0])} />
     {incoming && <div className="backup-preview">
       <h4>{t("Prévia — nenhuma substituição", "Preview — no replacements")}</h4>

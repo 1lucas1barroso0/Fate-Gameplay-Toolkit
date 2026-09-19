@@ -384,7 +384,7 @@ test("keeps saved Mesas idle and connects every direction without duplicate rela
   assert.match(rooms, /className="room-quick-actions"/);
   assert.match(rooms, /Você narra esta Mesa\./);
   assert.match(rooms, /Você joga nesta Mesa\./);
-  assert.match(rooms, /disponível para todos os seus integrantes\./);
+  assert.match(rooms, /Tudo o que você publicar aqui aparece para quem está na Mesa\./);
   assert.match(rooms, /Histórico da Mesa/);
   assert.match(rooms, /Seu pedido chegou\. Você entra assim que o narrador aprovar\./);
   assert.match(rooms, /A primeira rolagem, nota, regra ou arquivo aparecerá aqui\./);
@@ -473,7 +473,7 @@ test("applies the final room, roll and settings wording without mixing indirect 
   assert.doesNotMatch(settings, /SettingChoice value="system"|Tudo guardado|Salvamento automático ativo/);
   assert.match(providers, /defaultTheme="dark" themes=\{\["light", "dark"\]\} enableSystem=\{false\}/);
   assert.match(settings, /Do seu jeito, sem deixar de ser Fate/);
-  assert.match(settings, /Tudo fica salvo neste dispositivo\. Mude o que quiser e faça o que for melhor para a sua Mesa\. É fácil rebobinar\./);
+  assert.match(settings, /Tudo fica neste dispositivo, e você pode voltar ao padrão quando quiser\./);
   assert.match(settings, /Escreva a ideia; o site vai se lembrar dela/);
   assert.doesNotMatch(settings, /idea-on-paper|Uma ideia já basta/);
   assert.ok(newRuleStart >= 0 && newRuleEnd > newRuleStart);

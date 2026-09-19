@@ -30,6 +30,7 @@ import {
   LogOut,
   Paperclip,
   RefreshCw,
+  Search,
   Send,
   ShieldCheck,
   StickyNote,
@@ -132,7 +133,7 @@ function RoomEntryView({ entry, onOpenRule, onDownloadFile, onDeleteFile, canDel
               <span><b>{file.name}</b><small>{formatFileSize(file.size)}</small></span>
               <Download aria-hidden="true" />
             </Button>
-            {canDeleteFile && <AlertDialog><AlertDialogTrigger asChild><Button variant="ghost" size="icon-sm" aria-label={t(`Excluir ${file.name}`, "Delete " + String(file.name) + "")}><Trash2 /></Button></AlertDialogTrigger><AlertDialogContent size="sm"><AlertDialogHeader><AlertDialogTitle>{t("Excluir este arquivo?")}</AlertDialogTitle><AlertDialogDescription>“{file.name}{t("” será removido desta Mesa e do armazenamento de arquivos. Fichas, regras e os outros itens do Histórico serão preservados.")}</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>{t("Cancelar")}</AlertDialogCancel><AlertDialogAction variant="destructive" onClick={() => void onDeleteFile(entry).then((result) => toast.success(result.cleanupPending ? t("Arquivo retirado da Mesa; a remoção física continuará automaticamente.") : t("Arquivo excluído por completo."))).catch((error) => toast.error(error instanceof Error ? error.message : t("O arquivo não foi excluído.")))}>{t("Excluir arquivo")}</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>}
+            {canDeleteFile && <AlertDialog><AlertDialogTrigger asChild><Button variant="ghost" size="icon-sm" aria-label={t(`Excluir ${file.name}`, "Delete " + String(file.name) + "")}><Trash2 /></Button></AlertDialogTrigger><AlertDialogContent size="sm"><AlertDialogHeader><AlertDialogTitle>{t("Excluir este arquivo?")}</AlertDialogTitle><AlertDialogDescription>{t(`“${file.name}” e sua entrada no Histórico serão apagados. Fichas, regras e os outros itens continuam como estão.`, `“${file.name}” and its history entry will be deleted. Sheets, rules, and other entries stay as they are.`)}</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>{t("Cancelar")}</AlertDialogCancel><AlertDialogAction variant="destructive" onClick={() => void onDeleteFile(entry).then((result) => toast.success(result.cleanupPending ? t("A entrada saiu do Histórico. O arquivo ainda está sendo apagado; isso termina sozinho.", "The entry was removed from history. The file is still being deleted; this will finish on its own.") : t("Arquivo excluído."))).catch((error) => toast.error(error instanceof Error ? error.message : t("O arquivo não foi excluído.")))}>{t("Excluir arquivo")}</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>}
           </div>
         ) : (
           <p className="room-note-body">{entry.body}</p>
@@ -193,8 +194,8 @@ function RoomOnboarding({ store, rulesProfiles, activeRulesProfileId, onSelectRu
     <div className="room-home" data-has-saved={store.savedRooms.length > 0}>
       {store.savedRooms.length > 0 && (
         <section className="saved-rooms" aria-labelledby="saved-rooms-heading">
-          <header><div><p className="eyebrow">{t("Neste dispositivo")}</p><h2 id="saved-rooms-heading">{t("Minhas Mesas")}</h2></div><span>{store.savedRooms.length} {store.savedRooms.length === 1 ? "guardada" : "guardadas"}</span></header>
-          <div>{store.savedRooms.map((saved) => { const linkedProfile = rulesProfiles.find((profile) => profile.id === saved.rulesProfileId); return <article key={saved.session.participantId}><div><b>{saved.roomName || t(`Mesa ${saved.session.roomCode}`, "Table " + String(saved.session.roomCode) + "")}</b><span>{saved.selfName || t("Sua entrada")} · {saved.role === "gm" ? t("Narrador") : saved.role === "player" ? t("Jogador") : "Participante"}</span><span className="saved-room-rules"><BookOpen /> {linkedProfile?.config.profileName || t("Fate Condensado")}</span><code>{saved.session.roomCode}</code></div><div className="saved-room-actions"><Button type="button" variant="outline" disabled={opening === saved.session.participantId} onClick={() => void openSaved(saved.session.participantId)}><DoorOpen /> {opening === saved.session.participantId ? t("Abrindo…") : t("Abrir")}</Button>{linkedProfile && <Button type="button" variant="ghost" size="icon-sm" aria-label={t(`Abrir regras ${linkedProfile.config.profileName}`, "Open rules " + String(linkedProfile.config.profileName) + "")} onClick={() => onOpenRulesProfile(linkedProfile.id)}><BookOpen /></Button>}<AlertDialog><AlertDialogTrigger asChild><Button type="button" variant="ghost" size="icon-sm" aria-label={t(`Esquecer ${saved.roomName || saved.session.roomCode}`, "Forget " + String(saved.roomName || saved.session.roomCode) + "")}><Trash2 /></Button></AlertDialogTrigger><AlertDialogContent size="sm"><AlertDialogHeader><AlertDialogTitle>{t("Esquecer esta Mesa neste dispositivo?")}</AlertDialogTitle><AlertDialogDescription>{t("A credencial local será removida. O histórico compartilhado da Mesa não será apagado.")}</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>{t("Cancelar")}</AlertDialogCancel><AlertDialogAction onClick={() => store.forgetRoom(saved.session.participantId)}>{t("Esquecer")}</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog></div></article>; })}</div>
+          <header><div><p className="eyebrow">{t("Neste dispositivo")}</p><h2 id="saved-rooms-heading">{t("Minhas Mesas")}</h2></div><span>{t(store.savedRooms.length === 1 ? "1 guardada" : `${store.savedRooms.length} guardadas`, store.savedRooms.length === 1 ? "1 saved" : `${store.savedRooms.length} saved`)}</span></header>
+          <div>{store.savedRooms.map((saved) => { const linkedProfile = rulesProfiles.find((profile) => profile.id === saved.rulesProfileId); return <article key={saved.session.participantId}><div><b>{saved.roomName || t(`Mesa ${saved.session.roomCode}`, "Table " + String(saved.session.roomCode) + "")}</b><span>{saved.selfName || t("Sua entrada")} · {saved.role === "gm" ? t("Narrador") : saved.role === "player" ? t("Jogador") : t("Participante")}</span><span className="saved-room-rules"><BookOpen /> {linkedProfile?.config.profileName || t("Fate Condensado")}</span><code>{saved.session.roomCode}</code></div><div className="saved-room-actions"><Button type="button" variant="outline" disabled={opening === saved.session.participantId} onClick={() => void openSaved(saved.session.participantId)}><DoorOpen /> {opening === saved.session.participantId ? t("Abrindo…") : t("Abrir")}</Button>{linkedProfile && <Button type="button" variant="ghost" size="icon-sm" aria-label={t(`Abrir regras ${linkedProfile.config.profileName}`, "Open rules " + String(linkedProfile.config.profileName) + "")} onClick={() => onOpenRulesProfile(linkedProfile.id)}><BookOpen /></Button>}<AlertDialog><AlertDialogTrigger asChild><Button type="button" variant="ghost" size="icon-sm" aria-label={t(`Esquecer ${saved.roomName || saved.session.roomCode}`, "Forget " + String(saved.roomName || saved.session.roomCode) + "")}><Trash2 /></Button></AlertDialogTrigger><AlertDialogContent size="sm"><AlertDialogHeader><AlertDialogTitle>{t("Esquecer esta Mesa neste dispositivo?")}</AlertDialogTitle><AlertDialogDescription>{t("Este navegador vai esquecer seu acesso. O Histórico compartilhado continua intacto.")}</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>{t("Cancelar")}</AlertDialogCancel><AlertDialogAction onClick={() => store.forgetRoom(saved.session.participantId)}>{t("Esquecer")}</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog></div></article>; })}</div>
         </section>
       )}
 
@@ -314,7 +315,7 @@ export function Rooms({
       <section className="workspace-panel room-waiting">
         {store.error ? <WifiOff /> : <Loader2 className="animate-spin" />}
         <h1>{store.error ? t("A Mesa não respondeu") : t("Abrindo a Mesa")}</h1>
-        <p>{store.error || t("Buscando o estado mais recente da mesa…")}</p>
+        <p>{store.error || t("Buscando o que há de mais recente na Mesa…")}</p>
         <div className="inline-actions">
           <Button variant="outline" onClick={() => void store.refresh().catch(() => undefined)}><RefreshCw /> {t("Tentar de novo")}</Button>
           <Button variant="ghost" onClick={store.closeRoom}><ArrowLeft /> {t("Voltar")}</Button>
@@ -347,6 +348,7 @@ export function Rooms({
     if (!cleanedQuery) return true;
     return `${entry.actor.name} ${entry.body}`.toLocaleLowerCase("pt-BR").includes(cleanedQuery);
   });
+  const connectionNeedsAttention = store.connection === "retrying" || store.connection === "offline";
 
   const publishNote = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -402,7 +404,7 @@ export function Rooms({
         <div>
           <p className="eyebrow">{t("Mesa ativa")}</p>
           <h1 id="active-room-heading">{room.name}</h1>
-          <p>{self.role === "gm" ? t("Você narra esta Mesa.") : t("Você joga nesta Mesa.")} {t("O que for publicado aqui fica disponível para todos os seus integrantes.")}</p>
+          <p>{self.role === "gm" ? t("Você narra esta Mesa.") : t("Você joga nesta Mesa.")} {t("Tudo o que você publicar aqui aparece para quem está na Mesa.")}</p>
         </div>
         <div className="room-toolbar-actions">
           <div className="room-code-box">
@@ -413,10 +415,10 @@ export function Rooms({
         </div>
       </header>
 
-      <div className="room-connection" role="status" data-state={store.connection}>
-        <span>{({ connecting: t("Atualizando a Mesa…"), synced: t("Mesa atualizada"), retrying: t("Tentando reconectar…"), offline: t("Sem conexão. Seu rascunho continua aqui."), paused: t("Atualização pausada enquanto esta aba está em segundo plano.") })[store.connection]}{store.lastSyncedAt && store.connection === "synced" ? ` · ${new Date(store.lastSyncedAt).toLocaleTimeString(getAppLanguage() === "pt" ? "pt-BR" : "en-US", { hour: "2-digit", minute: "2-digit" })}` : ""}</span>
+      {connectionNeedsAttention && <div className="room-connection" role="status" data-state={store.connection}>
+        <span>{store.connection === "retrying" ? t("A conexão caiu. Tentando voltar…") : t("Sem conexão. Suas notas continuam aqui.")}</span>
         {store.connection === "retrying" && <Button variant="outline" size="sm" onClick={() => void store.refresh()}>{t("Tentar agora")}</Button>}
-      </div>
+      </div>}
       <nav className="room-quick-actions" aria-label={t("Abrir recursos da Mesa")}>
         <Button type="button" variant="outline" className="room-quick-action" onClick={onOpenSheets}>
           <FileText aria-hidden="true" /><span><b>{t("Fichas")}</b><small>{t("Abrir")}</small></span>
@@ -428,17 +430,17 @@ export function Rooms({
           <Dices aria-hidden="true" /><span><b>{t("Rolar")}</b><small>4dF</small></span>
         </Button>
         <Button type="button" variant="outline" className="room-quick-action" disabled={uploading} onClick={() => fileInput.current?.click()}>
-          {uploading ? <Loader2 className="animate-spin" /> : <Paperclip aria-hidden="true" />}<span><b>{t("Arquivos")}</b><small>{uploading ? "Enviando…" : t("Adicionar")}</small></span>
+          {uploading ? <Loader2 className="animate-spin" /> : <Paperclip aria-hidden="true" />}<span><b>{t("Arquivos")}</b><small>{uploading ? t("Enviando…") : t("Adicionar")}</small></span>
         </Button>
         <input ref={fileInput} className="sr-only" type="file" multiple onChange={uploadFiles} />
       </nav>
 
       <section className="room-storage-meter" data-state={roomStorage.files.usedBytes >= roomStorage.files.limitBytes ? "critical" : roomStorage.files.usedBytes >= roomStorage.files.warningBytes ? "attention" : "normal"} aria-labelledby="room-storage-heading">
-        <div><p className="eyebrow">{t("Arquivos da Mesa")}</p><h2 id="room-storage-heading">{formatStorageBytes(roomStorage.files.usedBytes)} {t("usados de")} {formatStorageBytes(roomStorage.files.limitBytes)} {t("disponíveis nesta Mesa")}</h2><span>{roomStorage.files.count} {t("de")} {roomStorage.files.maxCount} {t("arquivos · até")}{formatStorageBytes(roomStorage.files.maxFileBytes)} {t("por arquivo")}</span></div>
+        <div><p className="eyebrow">{t("Arquivos da Mesa")}</p><h2 id="room-storage-heading">{formatStorageBytes(roomStorage.files.usedBytes)} {t("usados de")} {formatStorageBytes(roomStorage.files.limitBytes)}</h2><span>{t(`${roomStorage.files.count} de ${roomStorage.files.maxCount} arquivos · até ${formatStorageBytes(roomStorage.files.maxFileBytes)} por arquivo`, `${roomStorage.files.count} of ${roomStorage.files.maxCount} files · up to ${formatStorageBytes(roomStorage.files.maxFileBytes)} per file`)}</span></div>
         <progress value={roomStorage.files.usedBytes} max={roomStorage.files.limitBytes} aria-label={t("Uso do armazenamento de arquivos da Mesa")} />
-        {store.roomFileApproachingLimit && <p>{t("Espaço em atenção. Exporte ou exclua arquivos antes do próximo envio grande.")}</p>}
-        {roomStorage.database.usedBytes >= roomStorage.database.warningBytes && <p>{t("O armazenamento compartilhado está se aproximando da margem segura. O narrador pode exportar e limpar partes antigas do Histórico.")}</p>}
-        {self.role === "gm" && <div className="room-storage-maintenance"><p><strong>{t("Limpeza de cópias sem registro")}</strong><span>{t("Um envio interrompido pode deixar uma cópia sem aparecer no Histórico. Arquivos publicados ficam preservados.")}</span></p><OrphanCleanupDialog onCleanup={store.cleanupOrphanFiles} /></div>}
+        {store.roomFileApproachingLimit && <p>{t("O espaço está ficando cheio. Exporte ou exclua arquivos antes de enviar outro arquivo grande.")}</p>}
+        {roomStorage.database.usedBytes >= roomStorage.database.warningBytes && <p>{t("A Mesa está ficando cheia. O narrador pode exportar o Histórico e apagar apenas a parte antiga.")}</p>}
+        {self.role === "gm" && <div className="room-storage-maintenance"><p><strong>{t("Conferir envios interrompidos")}</strong><span>{t("Se um envio parar no meio, pode sobrar uma cópia fora do Histórico. A verificação remove apenas essas cópias.")}</span></p><OrphanCleanupDialog onCleanup={store.cleanupOrphanFiles} /></div>}
       </section>
 
       {store.session && linkedProfile && (
@@ -456,7 +458,7 @@ export function Rooms({
 
       {self.role === "gm" && pending.length > 0 && (
         <section className="approval-strip" aria-labelledby="approval-heading">
-          <div><p className="eyebrow">{t("Decisão do narrador")}</p><h2 id="approval-heading">{pending.length} {pending.length === 1 ? "pessoa quer" : "pessoas querem"} {t("entrar")}</h2></div>
+          <div><p className="eyebrow">{t("Decisão do narrador")}</p><h2 id="approval-heading">{t(pending.length === 1 ? "1 pessoa quer entrar" : `${pending.length} pessoas querem entrar`, pending.length === 1 ? "1 person wants to join" : `${pending.length} people want to join`)}</h2></div>
           <ul>
             {pending.map((participant) => (
               <li key={participant.id}>
@@ -471,8 +473,8 @@ export function Rooms({
       <div className="room-layout">
         <form className="note-composer" onSubmit={publishNote}>
           <Label htmlFor="room-note">{t("Notas da mesa")}</Label>
-          <Textarea id="room-note" value={note} onChange={(event) => draft.change(event.target.value)} disabled={!draft.ready} onKeyDown={(event) => { if ((event.ctrlKey || event.metaKey) && event.key === "Enter") { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} maxLength={1600} rows={4} />
-            <p className="draft-status" role="status">{draft.saved ? t("Rascunho salvo neste navegador. Ctrl/⌘ + Enter para publicar.") : t("Não foi possível salvar o rascunho. Copie o texto antes de sair.")}</p>
+          <Textarea id="room-note" value={note} onChange={(event) => draft.change(event.target.value)} disabled={!draft.ready} aria-keyshortcuts="Control+Enter Meta+Enter" onKeyDown={(event) => { if ((event.ctrlKey || event.metaKey) && event.key === "Enter") { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} maxLength={1600} rows={4} />
+          {!draft.saved && <p className="draft-status" role="alert">{t("Este navegador não conseguiu guardar o rascunho. Copie o texto antes de sair.")}</p>}
           <div><small>{note.length}/1600</small><Button type="submit" disabled={!note.trim() || posting || !draft.ready || !store.roomReady}>{posting ? <Loader2 className="animate-spin" /> : <Send />} {t("Publicar")}</Button></div>
         </form>
 
@@ -482,11 +484,11 @@ export function Rooms({
             <div className="room-sync-state">
               {store.error && <span data-error="true"><WifiOff /> {store.error}</span>}
               <Button size="icon-sm" variant="ghost" aria-label={t("Exportar Histórico completo")} onClick={() => void store.exportHistory().then(() => toast.success(t("Histórico exportado por inteiro."))).catch((error) => toast.error(error instanceof Error ? error.message : t("O Histórico não pôde ser exportado.")))}><Download /></Button>
-              <Button size="icon-sm" variant="ghost" aria-label="Atualizar Mesa" onClick={() => void store.refresh().catch(() => undefined)}><RefreshCw className={store.refreshing ? "animate-spin" : ""} /></Button>
+              <Button size="icon-sm" variant="ghost" aria-label={t("Atualizar Mesa")} onClick={() => void store.refresh().catch(() => undefined)}><RefreshCw className={store.refreshing ? "animate-spin" : ""} /></Button>
             </div>
           </header>
 
-          {self.role === "gm" && <div className="room-history-management"><span>{formatStorageBytes(roomStorage.history.usedBytes)} {t("em texto e metadados")}</span><Select value={historyDays} onValueChange={setHistoryDays}><SelectTrigger size="sm" aria-label={t("Período de Histórico a preservar")}><SelectValue /></SelectTrigger><SelectContent><SelectItem value="90">{t("Preservar 90 dias")}</SelectItem><SelectItem value="180">{t("Preservar 180 dias")}</SelectItem><SelectItem value="365">{t("Preservar 1 ano")}</SelectItem><SelectItem value="730">{t("Preservar 2 anos")}</SelectItem></SelectContent></Select><AlertDialog><AlertDialogTrigger asChild><Button variant="outline" size="sm"><Trash2 /> {t("Limpar Histórico antigo")}</Button></AlertDialogTrigger><AlertDialogContent size="sm" className="maintenance-dialog"><AlertDialogHeader><AlertDialogTitle>{t("Limpar o Histórico anterior a")}{Number(historyDays) === 365 ? t("um ano") : `${historyDays} dias`}?</AlertDialogTitle><AlertDialogDescription>{t("Rolagens, notas e referências de regras anteriores a esse período serão excluídas. Arquivos, participantes e tudo que for mais recente serão preservados. Exporte o Histórico antes se quiser guardar uma cópia.")}</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>{t("Cancelar")}</AlertDialogCancel><AlertDialogAction variant="destructive" onClick={() => void store.clearOldHistory(Date.now() - Number(historyDays) * 24 * 60 * 60 * 1000).then((result) => toast.success(result.removed ? t(`${result.removed} item(ns) antigo(s) excluído(s).`, "" + String(result.removed) + " old entries deleted.") : t("Não havia itens antigos nesse período."))).catch((error) => toast.error(error instanceof Error ? error.message : t("Nada foi apagado.")))}>{t("Limpar agora")}</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog></div>}
+          {self.role === "gm" && <div className="room-history-management"><span>{formatStorageBytes(roomStorage.history.usedBytes)} {t("ocupados pelo Histórico")}</span><Select value={historyDays} onValueChange={setHistoryDays}><SelectTrigger size="sm" aria-label={t("Período de Histórico a preservar")}><SelectValue /></SelectTrigger><SelectContent><SelectItem value="90">{t("Preservar 90 dias")}</SelectItem><SelectItem value="180">{t("Preservar 180 dias")}</SelectItem><SelectItem value="365">{t("Preservar 1 ano")}</SelectItem><SelectItem value="730">{t("Preservar 2 anos")}</SelectItem></SelectContent></Select><AlertDialog><AlertDialogTrigger asChild><Button variant="outline" size="sm"><Trash2 /> {t("Limpar Histórico antigo")}</Button></AlertDialogTrigger><AlertDialogContent size="sm" className="maintenance-dialog"><AlertDialogHeader><AlertDialogTitle>{t(`Limpar o Histórico anterior a ${Number(historyDays) === 365 ? "um ano" : `${historyDays} dias`}?`, `Clear history older than ${Number(historyDays) === 365 ? "one year" : `${historyDays} days`}?`)}</AlertDialogTitle><AlertDialogDescription>{t("Rolagens, notas e referências de regras anteriores a esse período serão excluídas. Arquivos, participantes e tudo que for mais recente serão preservados. Exporte o Histórico antes se quiser guardar uma cópia.")}</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>{t("Cancelar")}</AlertDialogCancel><AlertDialogAction variant="destructive" onClick={() => void store.clearOldHistory(Date.now() - Number(historyDays) * 24 * 60 * 60 * 1000).then((result) => toast.success(result.removed ? t(result.removed === 1 ? "1 item antigo excluído." : `${result.removed} itens antigos excluídos.`, result.removed === 1 ? "1 old entry deleted." : `${result.removed} old entries deleted.`) : t("Não havia itens antigos nesse período."))).catch((error) => toast.error(error instanceof Error ? error.message : t("Nada foi apagado.")))}>{t("Limpar agora")}</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog></div>}
 
           <div className="room-feed-tools">
             <div className="room-filter" role="group" aria-label={t("Filtrar atividade")}>
@@ -496,7 +498,10 @@ export function Rooms({
                 </button>
               ))}
             </div>
-            <Input value={query} onChange={(event) => setQuery(event.target.value)} aria-label={t("Buscar na atividade visível")} />
+            <div className="room-feed-search" role="search">
+              <label htmlFor="room-history-search"><Search aria-hidden="true" /><span>{t("Pesquisar no Histórico")}</span></label>
+              <Input id="room-history-search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("Nome, nota, regra ou arquivo…")} />
+            </div>
           </div>
 
           {store.viewingHistory && <div className="history-banner"><History /> {t("Você está vendo uma página antiga.")}<Button size="sm" variant="outline" onClick={store.returnLatest}>{t("Voltar ao presente")}</Button></div>}
@@ -506,7 +511,7 @@ export function Rooms({
               {visibleEntries.map((entry) => <RoomEntryView key={entry.id} entry={entry} onOpenRule={onOpenRule} onDownloadFile={store.downloadFile} onDeleteFile={store.deleteFile} canDeleteFile={entry.type === "file" && (self.role === "gm" || entry.actor.id === self.id)} />)}
             </ol>
           ) : (
-            <div className="room-feed-empty"><StickyNote aria-hidden="true" /><p>{entries.length ? t("Nenhuma atividade corresponde a este filtro.") : t("A primeira rolagem, nota, regra ou arquivo aparecerá aqui.")}</p></div>
+            <div className="room-feed-empty"><StickyNote aria-hidden="true" /><p>{entries.length ? t("Nada no Histórico corresponde a esta pesquisa e aos filtros escolhidos.") : t("A primeira rolagem, nota, regra ou arquivo aparecerá aqui.")}</p></div>
           )}
 
           {(store.viewingHistory || store.snapshot.nextCursor) && <footer className="room-feed-pagination">
@@ -520,7 +525,7 @@ export function Rooms({
             <h2><Users /> {t("Na Mesa")}<Badge variant="secondary">{approved.length}</Badge></h2>
             <ul className="participant-list">
               {approved.map((participant) => (
-                <li key={participant.id}><span>{participant.name.slice(0, 1).toLocaleUpperCase("pt-BR")}</span><div><b>{participant.name}</b><small>{participant.role === "gm" ? t("Narrador") : t("Jogador")}{participant.id === self.id ? " · você" : ""}</small></div></li>
+                <li key={participant.id}><span>{participant.name.slice(0, 1).toLocaleUpperCase("pt-BR")}</span><div><b>{participant.name}</b><small>{participant.role === "gm" ? t("Narrador") : t("Jogador")}{participant.id === self.id ? t(" · você", " · you") : ""}</small></div></li>
               ))}
             </ul>
           </section>
@@ -528,11 +533,11 @@ export function Rooms({
             <AlertDialog>
               <AlertDialogTrigger asChild><Button variant="ghost"><LogOut /> {t("Sair neste dispositivo")}</Button></AlertDialogTrigger>
               <AlertDialogContent size="sm">
-                <AlertDialogHeader><AlertDialogTitle>{t("Sair desta Mesa?")}</AlertDialogTitle><AlertDialogDescription>{t("A credencial local será removida deste dispositivo. O diário compartilhado não será apagado.")}</AlertDialogDescription></AlertDialogHeader>
+                <AlertDialogHeader><AlertDialogTitle>{t("Sair desta Mesa?")}</AlertDialogTitle><AlertDialogDescription>{t("Este navegador vai esquecer seu acesso. O diário compartilhado continua intacto.")}</AlertDialogDescription></AlertDialogHeader>
                 <AlertDialogFooter><AlertDialogCancel>{t("Ficar")}</AlertDialogCancel><AlertDialogAction onClick={store.leave}>{t("Sair")}</AlertDialogAction></AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>
-            {self.role === "gm" && <AlertDialog><AlertDialogTrigger asChild><Button variant="outline" className="destructive-outline"><Trash2 /> {t("Excluir Mesa inteira")}</Button></AlertDialogTrigger><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>{t("Excluir “")}{room.name}{t("” por completo?")}</AlertDialogTitle><AlertDialogDescription>{t("Participantes, Histórico, referências e todos os arquivos desta Mesa serão excluídos. Esta ação não afeta Fichas ou conjuntos de regras guardados neste dispositivo e não pode ser desfeita. Exporte o que quiser preservar.")}</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>{t("Cancelar")}</AlertDialogCancel><AlertDialogAction variant="destructive" onClick={() => void store.deleteCurrentRoom().then((result) => toast.success(result.cleanupPending ? t("Mesa excluída; a limpeza física dos arquivos continuará automaticamente.") : t("Mesa e seus arquivos foram excluídos por completo."))).catch((error) => toast.error(error instanceof Error ? error.message : t("A Mesa não foi excluída.")))}>{t("Excluir Mesa inteira")}</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>}
+            {self.role === "gm" && <AlertDialog><AlertDialogTrigger asChild><Button variant="outline" className="destructive-outline"><Trash2 /> {t("Excluir Mesa inteira")}</Button></AlertDialogTrigger><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>{t(`Excluir “${room.name}” por completo?`, `Delete “${room.name}” completely?`)}</AlertDialogTitle><AlertDialogDescription>{t("Participantes, Histórico, referências e todos os arquivos desta Mesa serão excluídos. Esta ação não afeta Fichas ou conjuntos de regras guardados neste dispositivo e não pode ser desfeita. Exporte o que quiser preservar.")}</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>{t("Cancelar")}</AlertDialogCancel><AlertDialogAction variant="destructive" onClick={() => void store.deleteCurrentRoom().then((result) => toast.success(result.cleanupPending ? t("Mesa excluída. Alguns arquivos ainda estão sendo apagados; isso termina sozinho.") : t("Mesa e arquivos excluídos."))).catch((error) => toast.error(error instanceof Error ? error.message : t("A Mesa não foi excluída.")))}>{t("Excluir Mesa inteira")}</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>}
           </section>
         </aside>
       </div>

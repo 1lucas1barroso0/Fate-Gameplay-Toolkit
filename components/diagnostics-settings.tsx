@@ -12,8 +12,8 @@ export function DiagnosticsSettings() {
   React.useEffect(() => { const timer = setTimeout(() => setEnabled(diagnosticsEnabled()), 0); return () => clearTimeout(timer); }, []);
   return <section className="storage-action-section">
     <h3>{t("Diagnóstico privado", "Private diagnostics")}</h3>
-    <p>{t("Opcional. Guarda neste navegador até 100 registros técnicos por até 7 dias: área, resultado, duração e código HTTP. Sem nomes, textos, arquivos, URLs, fichas ou credenciais. Nada é enviado automaticamente.", "Optional. Keeps up to 100 technical events in this browser for up to 7 days: area, outcome, duration and HTTP status. No names, text, files, URLs, sheets or credentials. Nothing is sent automatically.")}</p>
-    <label><input type="checkbox" checked={enabled} onChange={event => { try { setDiagnosticsEnabled(event.target.checked); setEnabled(event.target.checked); setFailed(false); } catch { setFailed(true); } }} /> {t("Guardar diagnóstico local", "Keep local diagnostics")}</label>
+    <p>{t("Opcional. Guarda neste navegador um resumo técnico dos últimos 7 dias para ajudar a entender falhas. Não inclui nomes, textos, arquivos, endereços, Fichas nem dados de acesso. Nada é enviado sozinho.", "Optional. Keeps a technical summary from the last 7 days in this browser to help investigate failures. It never includes names, text, files, addresses, sheets or access details. Nothing is sent on its own.")}</p>
+    <label><input type="checkbox" checked={enabled} onChange={event => { try { setDiagnosticsEnabled(event.target.checked); setEnabled(event.target.checked); setFailed(false); } catch { setFailed(true); } }} /> {t("Guardar diagnóstico neste navegador", "Keep diagnostics in this browser")}</label>
     {failed && <p role="alert">{t("Este navegador não permitiu salvar a preferência.", "This browser could not save the preference.")}</p>}
     {enabled && <Button variant="outline" onClick={() => safeJsonDownload("fate-diagnostics.json", { format: "fate-diagnostics", version: 1, events: readDiagnostics() })}>{t("Exportar diagnóstico", "Export diagnostics")}</Button>}
   </section>;

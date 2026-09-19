@@ -15,9 +15,12 @@ export type OrphanCleanupResult = {
 };
 
 function cleanupMessage(result: OrphanCleanupResult) {
-  if (!result.found) return t("Nenhuma cópia sem registro foi encontrada. Os arquivos publicados foram preservados.");
+  if (!result.found) return t("Tudo certo. Nenhuma sobra de envio foi encontrada e os arquivos publicados continuam intactos.");
   const pending = result.pending || Math.max(0, result.found - result.removed);
-  return t(`${result.found} cópia(s) sem registro encontrada(s); ${result.removed} removida(s)${pending ? `; ${pending} aguardando limpeza automática` : ""}.`, "" + String(result.found) + " unregistered copy/copies found; " + String(result.removed) + " removed" + String(pending ? `; ${pending} aguardando limpeza automática` : "") + ".");
+  const found = result.found === 1 ? "1 sobra de envio encontrada" : `${result.found} sobras de envio encontradas`;
+  const removed = result.removed === 1 ? "1 removida" : `${result.removed} removidas`;
+  const waiting = pending ? pending === 1 ? "; 1 será removida automaticamente" : `; ${pending} serão removidas automaticamente` : "";
+  return t(`${found}; ${removed}${waiting}.`, `${result.found} interrupted-upload ${result.found === 1 ? "copy" : "copies"} found; ${result.removed} removed${pending ? `; ${pending} will be removed automatically` : ""}.`);
 }
 
 export function OrphanCleanupDialog({
@@ -36,7 +39,7 @@ export function OrphanCleanupDialog({
     try {
       toast.success(cleanupMessage(await onCleanup()));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : t("A verificação não terminou. Nenhuma cópia publicada foi alterada."));
+      toast.error(error instanceof Error ? error.message : t("A verificação não terminou. Nenhum arquivo publicado foi alterado."));
     } finally {
       setWorking(false);
     }
@@ -46,18 +49,18 @@ export function OrphanCleanupDialog({
     <AlertDialog>
       <AlertDialogTrigger asChild>
         <Button type="button" variant="outline" size="sm" disabled={disabled || working}>
-          <RefreshCw className={working ? "animate-spin" : undefined} /> {t("Verificar e limpar")}</Button>
+          <RefreshCw className={working ? "animate-spin" : undefined} /> {t("Conferir envios")}</Button>
       </AlertDialogTrigger>
       <AlertDialogContent size="sm" className="maintenance-dialog">
         <AlertDialogHeader>
-          <AlertDialogTitle>{t("Verificar cópias sem registro?")}</AlertDialogTitle>
+          <AlertDialogTitle>{t("Conferir envios interrompidos?")}</AlertDialogTitle>
           <AlertDialogDescription>
-            {t("Um envio interrompido pode deixar uma cópia no armazenamento sem aparecer no Histórico. Esta ação procura somente essas cópias e não remove arquivos publicados, Fichas, regras ou o Histórico.")}</AlertDialogDescription>
+            {t("Se um envio parar no meio, pode sobrar uma cópia fora do Histórico. A ferramenta procura e remove somente essas sobras. Arquivos publicados, Fichas, regras e o Histórico ficam intactos.")}</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>{t("Cancelar")}</AlertDialogCancel>
           <AlertDialogAction variant="destructive" disabled={working} onClick={() => void cleanup()}>
-            {working ? "Verificando…" : t("Verificar e limpar")}
+            {working ? t("Conferindo…") : t("Conferir e limpar")}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

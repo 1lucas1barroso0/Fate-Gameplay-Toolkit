@@ -101,3 +101,35 @@ test('diagnostics stay opt-in, bounded, content-free and can be erased', () => {
     setDiagnosticsEnabled(false); assert.equal(readDiagnostics().length,0);
   } finally { if(previous) Object.defineProperty(globalThis,'localStorage',previous); else delete globalThis.localStorage; }
 });
+
+test('interface copy stays clean, searchable and human in both languages', async () => {
+  const [rooms, storage, backup, diagnostics, cleanup, settings, dice, styles, messagesRaw] = await Promise.all([
+    readFile('components/rooms.tsx', 'utf8'),
+    readFile('components/storage-settings.tsx', 'utf8'),
+    readFile('components/backup-settings.tsx', 'utf8'),
+    readFile('components/diagnostics-settings.tsx', 'utf8'),
+    readFile('components/orphan-cleanup-dialog.tsx', 'utf8'),
+    readFile('components/table-settings.tsx', 'utf8'),
+    readFile('components/dice-roller.tsx', 'utf8'),
+    readFile('app/globals.css', 'utf8'),
+    readFile('content/interface-en.json', 'utf8'),
+  ]);
+  const messages = JSON.parse(messagesRaw);
+  const reviewedCopy = [rooms, storage, backup, diagnostics, cleanup, settings, dice].join('\n');
+
+  assert.doesNotMatch(rooms, /Rascunho salvo neste navegador|Mesa atualizada|lastSyncedAt/);
+  assert.match(rooms, /className="room-feed-search" role="search"/);
+  assert.match(rooms, /Pesquisar no Histórico/);
+  assert.match(rooms, /Nome, nota, regra ou arquivo…/);
+  assert.match(rooms, /arquivos · até \$\{formatStorageBytes\(roomStorage\.files\.maxFileBytes\)\} por arquivo/);
+  assert.match(styles, /\.room-feed-search \{ display: grid;/);
+  assert.doesNotMatch(reviewedCopy, /Blob real|quota total|A decomposição|limpeza física|item\(ns\)|cópia\(s\)|Ficha\(s\)|Mesa\(s\)/);
+  assert.doesNotMatch(backup, /Última exportação iniciada|lastExportAt\s*\?/);
+  assert.doesNotMatch(diagnostics, /código HTTP|URLs|credenciais/);
+  assert.match(dice, /Defesa total já incluída:"\)\} \{modifier/);
+  assert.match(dice, /· Diferença:"\)\} \{latest/);
+  assert.match(settings, /você pode voltar ao padrão quando quiser/);
+  assert.equal(messages['Pesquisar no Histórico'], 'Search history');
+  assert.equal(messages['Sem conexão. Suas notas continuam aqui.'], 'You’re offline. Your notes are still here.');
+  assert.equal(messages['Proteger estes dados'], 'Protect this data');
+});

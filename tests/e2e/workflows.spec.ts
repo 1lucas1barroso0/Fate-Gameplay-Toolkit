@@ -60,6 +60,11 @@ test("table approval, scene sharing/conflicts, draft reconnect and upload errors
   await expect(page.getByText("Waiting for the GM", { exact: true })).toBeVisible();
   approved = true;
   await expect(page.getByRole("heading", { name: "Test table", exact: true })).toBeVisible({ timeout: 12000 });
+  await expect(page.getByText("Table up to date", { exact: false })).toHaveCount(0);
+  await expect(page.getByText("Search history", { exact: true })).toBeVisible();
+  await expect(page.getByPlaceholder("Name, note, rule, or file…", { exact: true })).toBeVisible();
+  await page.locator("#room-note").fill("Draft online");
+  await expect(page.getByText("Draft saved in this browser", { exact: false })).toHaveCount(0);
   await page.locator(".optional-scene > summary").click();
   await page.getByRole("button", { name: "Create scene", exact: true }).click();
   await page.getByLabel("Title", { exact: true }).fill("On the bridge");
@@ -73,7 +78,7 @@ test("table approval, scene sharing/conflicts, draft reconnect and upload errors
   await expect(page.getByLabel("Title", { exact: true })).toHaveValue("Draft stays");
   await page.locator("#room-note").fill("Draft offline");
   await page.context().setOffline(true);
-  await expect(page.getByText("Offline. Your draft is still here.", { exact: false })).toBeVisible();
+  await expect(page.getByText("You’re offline. Your notes are still here.", { exact: true })).toBeVisible();
   await page.context().setOffline(false);
   await expect(page.locator("#room-note")).toHaveValue("Draft offline");
   await page.locator('input[type="file"][multiple]').setInputFiles({ name: "test.txt", mimeType: "text/plain", buffer: Buffer.from("test only") });

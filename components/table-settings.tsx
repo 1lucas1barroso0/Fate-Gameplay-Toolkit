@@ -267,7 +267,7 @@ export function TableSettings({
         <div>
           <p className="eyebrow">{t("Do seu jeito, sem deixar de ser Fate")}</p>
           <h1 id="settings-heading">{t("Seu Fate")}</h1>
-          <p>{t("Comece com o livro. Mude só o que ajudar a mesa. Tudo fica salvo neste dispositivo. Mude o que quiser e faça o que for melhor para a sua Mesa. É fácil rebobinar.")}</p>
+          <p>{t("Comece com o livro e mude só o que ajudar sua Mesa. Tudo fica neste dispositivo, e você pode voltar ao padrão quando quiser.")}</p>
         </div>
         <div className="toolbar-actions">
           <Button variant="outline" size="sm" onClick={() => safeJsonDownload(`${config.profileName}.regras-fate.json`, config)}><Download /> {t("Salvar mudanças")}</Button>

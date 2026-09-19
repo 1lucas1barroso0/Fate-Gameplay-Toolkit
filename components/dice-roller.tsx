@@ -212,17 +212,17 @@ export function DiceRoller({
 
           <div className="roll-buttons">
             <Button size="lg" onClick={rollLocal}><Dices /> {t("Rolar neste dispositivo")}</Button>
-            {onRoomRoll && <Button size="lg" variant="outline" disabled={!roomReady || rollingRoom || !validRoomModifier} onClick={rollInRoom}><Send /> {rollingRoom ? "Rolando…" : t("Rolar na Mesa")}</Button>}
+            {onRoomRoll && <Button size="lg" variant="outline" disabled={!roomReady || rollingRoom || !validRoomModifier} onClick={rollInRoom}><Send /> {rollingRoom ? t("Rolando…") : t("Rolar na Mesa")}</Button>}
           </div>
 
-          {tableConfig.officialRules.fullDefense && fullDefense && <p className="applied-bonus"><Shield /> {t("Defesa total já incluída:")}{modifier >= 0 ? "+" : ""}{modifier} + 2 = {effectiveModifier >= 0 ? "+" : ""}{effectiveModifier}</p>}
+          {tableConfig.officialRules.fullDefense && fullDefense && <p className="applied-bonus"><Shield /> {t("Defesa total já incluída:")} {modifier >= 0 ? "+" : ""}{modifier} + 2 = {effectiveModifier >= 0 ? "+" : ""}{effectiveModifier}</p>}
 
           {!validRoomModifier && <p className="reader-notice">{t("A Mesa aceita bônus final entre −20 e +20. Ajuste o bônus para publicar.")}</p>}
           <details className="roll-comparison">
             <summary>{t("Comparar com uma dificuldade")}</summary>
             <p>{t("Informe a dificuldade ou o esforço da oposição para comparar o resultado. A ação e a ficção determinam o que acontece.")}</p>
             <Label className="field-stack"><span>{t("Dificuldade ou oposição")}</span><Input type="number" min={-26} max={26} step={1} value={difficulty} onChange={event => setDifficulty(Math.max(-26, Math.min(26, Math.trunc(Number(event.target.value) || 0))))} /></Label>
-            {latest && <p aria-live="polite"><b>{outcomeLabels[outcome(latest.total, difficulty)]}</b> {t("· Diferença:")}{latest.total - difficulty >= 0 ? "+" : ""}{latest.total - difficulty}</p>}
+            {latest && <p aria-live="polite"><b>{outcomeLabels[outcome(latest.total, difficulty)]}</b> {t("· Diferença:")} {latest.total - difficulty >= 0 ? "+" : ""}{latest.total - difficulty}</p>}
             <div className="roll-outcomes">{(Object.keys(chances) as Array<keyof typeof chances>).map(key => <div key={key}><small>{outcomeLabels[key]}</small><b>{(chances[key] / 81 * 100).toLocaleString(getAppLanguage() === "pt" ? "pt-BR" : "en-US", { maximumFractionDigits: 1 })}%</b></div>)}</div>
             <small>{t("Chances para uma nova rolagem com o bônus atual (")}{effectiveModifier >= 0 ? "+" : ""}{effectiveModifier}).</small>
           </details>
