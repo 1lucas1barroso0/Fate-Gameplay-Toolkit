@@ -3,12 +3,13 @@ import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import { getDb } from "@/db";
 import { authSchema } from "@/db/account-schema";
 import { accountSecret, getAccountDb } from "@/lib/server/account-db";
+import { ACCOUNT_MIN_PASSWORD_LENGTH, ACCOUNT_MAX_PASSWORD_LENGTH } from "@/lib/account-policy";
 
 export function createFateAuth(database: Parameters<typeof drizzleAdapter>[0], secret: string, baseURL: string) {
   return betterAuth({
     appName: "Fate Gameplay Toolkit", baseURL, secret,
     database: drizzleAdapter(database, { provider: "pg", schema: authSchema, transaction: false }),
-    emailAndPassword: { enabled: true, minPasswordLength: 12, maxPasswordLength: 128, autoSignIn: true },
+    emailAndPassword: { enabled: true, minPasswordLength: ACCOUNT_MIN_PASSWORD_LENGTH, maxPasswordLength: ACCOUNT_MAX_PASSWORD_LENGTH, autoSignIn: true },
     account: { accountLinking: { enabled: false } },
     session: { expiresIn: 30 * 86400, updateAge: 86400, cookieCache: { enabled: false } },
     advanced: { cookiePrefix: "fate", useSecureCookies: baseURL.startsWith("https://"),
@@ -17,6 +18,12 @@ export function createFateAuth(database: Parameters<typeof drizzleAdapter>[0], s
     rateLimit: { enabled: false },
     user: { deleteUser: { enabled: false } },
     trustedOrigins: [baseURL],
+    databaseHooks: { session: { create: { after: async session => {
+      const sql = await getAccountDb();
+      await sql`DELETE FROM fate_session WHERE user_id=${session.userId} AND id<>${session.id}
+        AND (expires_at<=NOW() OR id NOT IN (SELECT id FROM fate_session WHERE user_id=${session.userId}
+          AND id<>${session.id} AND expires_at>NOW() ORDER BY created_at DESC,id DESC LIMIT 19))`;
+    } } } },
   });
 }
 let auth: Promise<ReturnType<typeof createFateAuth>> | null = null;
@@ -43,9 +50,9 @@ export async function requireAccount(request: Request) {
   }
   if (request.headers.get("x-fate-account") !== session.user.id) throw new AccountError("account_changed", 409);
   const sql = await getAccountDb();
-  const state = await sql`SELECT deleting FROM fate_account_workspace WHERE user_id = ${session.user.id}`;
+  const state = await sql`SELECT deleting,revision FROM fate_account_workspace WHERE user_id = ${session.user.id}`;
   if (state[0]?.deleting) throw new AccountError("account_deleting", 403);
-  return session;
+  return { ...session, workspaceRevision: state[0] ? Number(state[0].revision) : -1 };
 }
 export function requireSameOrigin(request: Request) {
   const origin = request.headers.get("origin");
@@ -62,5 +69,9 @@ export async function boundedJson(request: Request, maximum = 16000) {
   if (!reader) throw new AccountError("invalid_request");
   const chunks: Uint8Array[] = []; let size = 0;
   for (;;) { const { done, value } = await reader.read(); if (done) break; size += value.length; if (size > maximum) { await reader.cancel(); throw new AccountError("request_too_large", 413); } chunks.push(value); }
-  try { return JSON.parse(Buffer.concat(chunks).toString("utf8")); } catch { throw new AccountError("invalid_request"); }
+  try {
+    const value = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+    if (!value || typeof value !== "object" || Array.isArray(value)) throw Error();
+    return value;
+  } catch { throw new AccountError("invalid_request"); }
 }

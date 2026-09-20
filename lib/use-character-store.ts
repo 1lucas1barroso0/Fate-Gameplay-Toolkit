@@ -38,6 +38,7 @@ export function useCharacterStore() {
   const [storageRevision, setStorageRevision] = React.useState(0);
   const undoStack = React.useRef<FateCharacter[]>([]);
   const lastSerialized = React.useRef("");
+  const loadedVersion = React.useRef(0);
 
   React.useEffect(() => {
     const handle = window.setTimeout(() => {
@@ -69,7 +70,9 @@ export function useCharacterStore() {
 
   React.useEffect(() => {
     if (!hydrated) return;
+    const version = loadedVersion.current;
     const save = (event?: Event) => {
+      if (version !== loadedVersion.current) return;
       const payload: StoredCharacters = { version: 1, activeId, characters };
       const serialized = JSON.stringify(payload);
       if (serialized === lastSerialized.current) return;
@@ -91,6 +94,7 @@ export function useCharacterStore() {
     const reload = () => {
       const stored = parseStoredCharacters(localStorage.getItem(CHARACTER_STORE_KEY));
       if (!stored || JSON.stringify(stored) === lastSerialized.current) return;
+      loadedVersion.current++;
       lastSerialized.current = JSON.stringify(stored);
       setCharacters(stored.characters);
       setActiveId(stored.activeId);

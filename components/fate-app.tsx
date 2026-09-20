@@ -146,7 +146,7 @@ export function FateApp() {
     <div className="app-shell" data-workspace={workspace}>
       <a className="skip-link" href="#workspace-content">{t("Pular para o conteúdo")}</a>
       <header className="app-header">
-        <div className="language-switch" role="group" aria-label={language === "pt" ? "Idioma do site" : "Site language"}><button type="button" aria-pressed={language === "pt"} onClick={() => setLanguage("pt")}>PT-BR</button><button type="button" aria-pressed={language === "en"} onClick={() => setLanguage("en")}>English</button></div>
+        <div className="language-switch" role="group" aria-label={language === "pt" ? "Idioma do site" : "Site language"}><button type="button" lang="pt-BR" aria-pressed={language === "pt"} onClick={() => setLanguage("pt")}>PT-BR</button><button type="button" lang="en" aria-pressed={language === "en"} onClick={() => setLanguage("en")}>English</button></div>
         <div className="brand-lockup" aria-label="Fate Gameplay Toolkit">
           <FateMark className="app-mark" />
           <span><span className="brand-title"><b>Fate</b><strong>Gameplay Toolkit</strong></span><small>{t("Fichas, regras e mesas do seu jeito")}</small></span>

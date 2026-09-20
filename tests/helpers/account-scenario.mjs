@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { call, cookies, database } from './account-harness.mjs';
+import { call, cookies, database, origin } from './account-harness.mjs';
 import { createCharacter } from '../../lib/fate.ts';
+const { authorize } = await import('../../lib/server/rooms.ts');
 
 try {
   const email = 'story@example.test', password = 'A long unique password 123';
+  assert.equal((await call('/api/auth/sign-up/email',{method:'POST',body:{email:'weak@example.test',password:'shorter-sample',name:'Teste'}})).status,400);
   const signup = await call('/api/auth/sign-up/email', { method: 'POST', body: { email, password, name: 'Narradora' } });
   assert.equal(signup.status, 200, await signup.clone().text());
   const { user } = await signup.json(), firstCookie = cookies(signup);
@@ -15,14 +17,20 @@ try {
   assert.notEqual(stored.password, password); assert.ok(stored.password.length > 80);
   const wrong = await call('/api/auth/sign-in/email', { method: 'POST', body: { email, password: 'Wrong password 1234' } });
   assert.equal(wrong.status, 401);
+  await database.query(`INSERT INTO fate_session(id,user_id,token,expires_at,created_at,updated_at)
+    SELECT 'old-session-'||i,$1,'old-token-'||i,NOW()+INTERVAL '1 day',NOW()-INTERVAL '1 day',NOW() FROM generate_series(1,24) i`, [user.id]);
   const signin = await call('/api/auth/sign-in/email', { method: 'POST', body: { email, password, name: '' } });
   assert.equal(signin.status, 200, await signin.clone().text());
   const secondCookie = cookies(signin);
   assert.equal((await signin.json()).user.id, user.id);
+  assert.equal((await database.query('SELECT count(*)::int AS n FROM fate_session WHERE user_id=$1',[user.id])).rows[0].n,20);
   const owner = { cookie: firstCookie, id: user.id };
   assert.equal((await call('/api/account/workspace')).status, 401);
   assert.equal((await call('/api/account/workspace', { cookie: firstCookie, id: 'another-user' })).status, 409);
   assert.equal((await call('/api/account/workspace', { ...owner, method: 'PUT', requestOrigin: 'https://foreign.test', body: {} })).status, 403);
+  assert.equal((await call('/api/account', { ...owner, method: 'POST', requestOrigin: 'https://foreign.test' })).status,403);
+  assert.equal((await call('/api/auth/sign-in/email', { method:'POST', body:null })).status,400);
+  assert.equal((await call('/api/auth/get-session', owner)).status,404);
   const empty = await (await call('/api/account/workspace', owner)).json();
   assert.deepEqual(empty, { revision: 0, data: {} });
 
@@ -35,6 +43,8 @@ try {
   const saved = await call('/api/account/workspace', { ...owner, method: 'PUT', body: { revision: 0, data } });
   assert.equal(saved.status, 200, await saved.clone().text());
   assert.equal((await saved.json()).revision, 1);
+  const unchanged = await call('/api/account/workspace?revision=1',owner);
+  assert.equal(unchanged.status,204); assert.equal(await unchanged.text(),'');
   const second = { cookie: secondCookie, id: user.id };
   assert.deepEqual((await (await call('/api/account/workspace', second)).json()).data, data);
   const image = await (await call('/api/account/images?id=' + imageId, second)).json();
@@ -56,17 +66,42 @@ try {
 
   const keyResponse = await call('/api/account/recovery', { ...second, method: 'POST', body: { password } });
   assert.equal(keyResponse.status, 200); const key = (await keyResponse.json()).key;
-  const newPassword = 'A different secure password 456';
+  let newPassword = 'A different secure password 456';
   assert.equal((await call('/api/account/recovery', { method: 'PATCH', body: { email, key: 'wrong', password: newPassword } })).status, 403);
   assert.equal((await call('/api/account/recovery', { method: 'PATCH', body: { email, key, password: newPassword } })).status, 200);
   assert.equal((await call('/api/account/recovery', { method: 'PATCH', body: { email, key, password } })).status, 403);
   assert.equal((await call('/api/account/workspace', second)).status, 401);
   const recovered = await call('/api/auth/sign-in/email', { method: 'POST', body: { email, password: newPassword } });
   assert.equal(recovered.status, 200); const finalOwner = { cookie: cookies(recovered), id: user.id };
+  const previousKey = await (await call('/api/account/recovery',{ ...finalOwner,method:'POST',body:{ password:newPassword } })).json();
+  const anotherLogin = await call('/api/auth/sign-in/email',{ method:'POST',body:{email,password:newPassword} });
+  assert.equal(anotherLogin.status,200); const oldSession={ cookie:cookies(anotherLogin),id:user.id };
+  const replacementPassword='Uma senha nova e diferente 789';
+  assert.equal((await call('/api/auth/change-password',{ ...finalOwner,method:'POST',body:{ currentPassword:newPassword,newPassword:'shorter-sample' } })).status,400);
+  assert.equal((await call('/api/auth/change-password',{ ...finalOwner,method:'POST',body:{ currentPassword:'wrong',newPassword:replacementPassword } })).status,403);
+  assert.equal((await call('/api/auth/change-password',{ ...finalOwner,method:'POST',body:{ currentPassword:newPassword,newPassword:replacementPassword,revokeOtherSessions:false } })).status,200);
+  assert.equal((await call('/api/account/workspace',oldSession)).status,401);
+  assert.equal((await call('/api/account/workspace',finalOwner)).status,200);
+  assert.equal((await call('/api/account/recovery',{method:'PATCH',body:{email,key:previousKey.key,password:newPassword}})).status,403);
+  newPassword=replacementPassword;
 
   const gm = await call('/api/rooms', { ...finalOwner, method: 'POST', body: { action: 'create', personName: 'Narradora', roomName: 'Mesa da conta', token: 'x'.repeat(43), requestId: crypto.randomUUID() } });
   assert.equal(gm.status, 201, await gm.clone().text());
   const gmSession = (await gm.json()).session;
+  const tableRequest = (cookie,method='GET') => new Request(origin+'/api/rooms/'+gmSession.roomCode,{ method,headers:{ authorization:'Bearer '+gmSession.token,'x-participant-id':gmSession.participantId,...(cookie?{cookie}:{}),origin } });
+  assert.equal((await authorize(tableRequest(finalOwner.cookie),gmSession.roomCode)).id,gmSession.participantId);
+  await assert.rejects(authorize(tableRequest(),gmSession.roomCode),error=>error.status===401);
+  await assert.rejects(authorize(tableRequest(oldSession.cookie),gmSession.roomCode),error=>error.status===401);
+  await assert.rejects(authorize(tableRequest(outsider.cookie),gmSession.roomCode),error=>error.status===401);
+  const guestResponse=await call('/api/rooms',{method:'POST',body:{action:'create',personName:'Visitante',roomName:'Mesa local',token:'g'.repeat(43),requestId:crypto.randomUUID()}});
+  assert.equal(guestResponse.status,201); const guestTable=(await guestResponse.json()).session;
+  const guestRequest=new Request(origin+'/api/rooms/'+guestTable.roomCode,{headers:{authorization:'Bearer '+guestTable.token,'x-participant-id':guestTable.participantId}});
+  assert.equal((await authorize(guestRequest,guestTable.roomCode)).id,guestTable.participantId);
+  const imported={...data,'fate-gameplay-toolkit.room-session.v1':JSON.stringify(guestTable)};
+  assert.equal((await call('/api/account/workspace',{...finalOwner,method:'PUT',body:{revision:0,data:imported}})).status,409);
+  assert.equal((await database.query('SELECT count(*)::int AS n FROM fate_account_membership WHERE participant_id=$1',[guestTable.participantId])).rows[0].n,0,'rejected snapshot must not claim a guest table');
+  assert.equal((await call('/api/account/workspace',{...finalOwner,method:'PUT',body:{revision:1,data:imported}})).status,200);
+  await assert.rejects(authorize(guestRequest,guestTable.roomCode),error=>error.status===401);
   const otherRoom = await call('/api/rooms', { ...outsider, method: 'POST', body: { action: 'create', personName: 'Outra pessoa', roomName: 'Outra Mesa', token: 'y'.repeat(43), requestId: crypto.randomUUID() } });
   assert.equal(otherRoom.status, 201); const otherSession = (await otherRoom.json()).session;
   const joined = await call('/api/rooms', { ...finalOwner, method: 'POST', body: { action: 'join', roomCode: otherSession.roomCode, personName: 'Jogadora', token: 'z'.repeat(43), requestId: crypto.randomUUID() } });
@@ -87,6 +122,7 @@ try {
   assert.equal((await database.query("SELECT count(*)::int AS count FROM entries WHERE id='account-file'")).rows[0].count, 0);
   assert.equal((await database.query("SELECT count(*)::int AS count FROM blob_cleanup_queue WHERE pathname='rooms/test/account.png'")).rows[0].count, 1, 'failed external deletion remains queued');
   assert.equal((await call('/api/account/workspace', finalOwner)).status, 401);
+  assert.equal((await call('/api/auth/sign-out',{...finalOwner,method:'POST',body:{}})).status,200,'expired/deleted sessions can still clear their cookie');
   assert.equal((await call('/api/account/workspace', outsider)).status, 200);
   console.log('Account lifecycle verified: auth, devices, isolation, images, conflicts, recovery, logout, deletion and durable file cleanup.');
 } finally { await database.close(); }

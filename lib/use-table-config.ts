@@ -58,6 +58,7 @@ export function useTableConfig() {
   const [hydrated, setHydrated] = React.useState(false);
   const [lastSavedAt, setLastSavedAt] = React.useState<number | null>(null);
   const lastSerialized = React.useRef("");
+  const loadedVersion = React.useRef(0);
   const { setTheme } = useTheme();
 
   const activeProfile = collection.profiles.find((profile) => profile.id === collection.activeProfileId)
@@ -91,7 +92,9 @@ export function useTableConfig() {
 
   React.useEffect(() => {
     if (!hydrated) return;
+    const version = loadedVersion.current;
     const save = (event?: Event) => {
+      if (version !== loadedVersion.current) return;
       const serialized = JSON.stringify(collection);
       if (serialized === lastSerialized.current) return;
       try {
@@ -120,6 +123,7 @@ export function useTableConfig() {
     const reload = () => {
       const stored = readStoredCollection();
       if (!stored || JSON.stringify(stored) === lastSerialized.current) return;
+      loadedVersion.current++;
       lastSerialized.current = JSON.stringify(stored);
       setCollection(stored);
     };

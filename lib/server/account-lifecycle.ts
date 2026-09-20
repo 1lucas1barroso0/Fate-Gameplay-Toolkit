@@ -4,6 +4,7 @@ import { getAccountDb } from "@/lib/server/account-db";
 import { AccountError } from "@/lib/server/auth";
 import { accountSnapshot } from "@/lib/server/account-workspace";
 import { drainBlobCleanupQueue } from "@/lib/server/rooms";
+import { ACCOUNT_MIN_PASSWORD_LENGTH, ACCOUNT_MAX_PASSWORD_LENGTH } from "@/lib/account-policy";
 
 type AccountSql = Awaited<ReturnType<typeof getAccountDb>>;
 
@@ -12,6 +13,23 @@ export async function checkAccountPassword(userId: string, password: unknown, da
   const sql = database ?? await getAccountDb();
   const rows = await sql`SELECT password FROM fate_credential WHERE user_id=${userId} AND provider_id='credential'`;
   if (!rows[0]?.password || !await verifyPassword({ hash: rows[0].password, password })) throw new AccountError("invalid_password", 403);
+  return rows[0].password as string;
+}
+
+export async function changeAccountPassword(userId: string, sessionToken: string, current: unknown, next: unknown) {
+  if (typeof next !== "string" || next.length < ACCOUNT_MIN_PASSWORD_LENGTH || next.length > ACCOUNT_MAX_PASSWORD_LENGTH) throw new AccountError("invalid_new_password");
+  const sql = await getAccountDb();
+  const previous = await checkAccountPassword(userId, current, sql), hashed = await hashPassword(next);
+  const result = await sql.transaction([
+    sql`SELECT pg_advisory_xact_lock(hashtext(${"account-security:"+userId}))`,
+    sql`UPDATE fate_credential SET password=${hashed},updated_at=NOW()
+      WHERE user_id=${userId} AND provider_id='credential' AND password=${previous} RETURNING user_id`,
+    sql`DELETE FROM fate_session WHERE user_id=${userId} AND token<>${sessionToken}
+      AND EXISTS (SELECT 1 FROM fate_credential WHERE user_id=${userId} AND password=${hashed})`,
+    sql`UPDATE fate_account_workspace SET recovery_hash=NULL WHERE user_id=${userId}
+      AND EXISTS (SELECT 1 FROM fate_credential WHERE user_id=${userId} AND password=${hashed})`,
+  ]);
+  if (!result[1].length) throw new AccountError("invalid_password", 403);
 }
 
 const recoveryHash = (value: string) => createHash("sha256").update(value.replace(/[\s-]/g, "").toUpperCase()).digest("hex");
@@ -24,13 +42,14 @@ export async function createRecoveryKey(userId: string, database?: AccountSql) {
 }
 
 export async function recoverAccount(email: unknown, key: unknown, password: unknown, database?: AccountSql) {
-  if (typeof email !== "string" || email.length > 254 || typeof key !== "string" || key.length > 100 || typeof password !== "string" || password.length < 12 || password.length > 128) throw new AccountError("invalid_recovery");
+  if (typeof email !== "string" || email.length > 254 || typeof key !== "string" || key.length > 100 || typeof password !== "string" || password.length < ACCOUNT_MIN_PASSWORD_LENGTH || password.length > ACCOUNT_MAX_PASSWORD_LENGTH) throw new AccountError("invalid_recovery");
   const sql = database ?? await getAccountDb();
   const normalized = email.trim().toLowerCase(), digest = recoveryHash(key);
   // Hash even when there is no match; account existence is not disclosed.
   const hashed = await hashPassword(password);
+  const users = await sql`SELECT id FROM fate_user WHERE email=${normalized}`;
   const result = await sql.transaction([
-    sql`SELECT pg_advisory_xact_lock(hashtext(${"account-recovery:"+normalized}))`,
+    sql`SELECT pg_advisory_xact_lock(hashtext(${"account-security:"+(users[0]?.id ?? normalized)}))`,
     sql`UPDATE fate_credential c SET password=${hashed}, updated_at=NOW()
       FROM fate_user u, fate_account_workspace w
       WHERE c.user_id=u.id AND w.user_id=u.id AND u.email=${normalized} AND w.recovery_hash=${digest} AND w.deleting=FALSE AND c.provider_id='credential' RETURNING c.user_id`,
@@ -48,6 +67,7 @@ export async function deleteAccountData(userId: string, database?: AccountSql) {
   // Queue files before any cascading delete. The transaction either removes all
   // account records together or preserves them all for another attempt.
   await sql.transaction([
+    sql`SELECT pg_advisory_xact_lock(hashtext(${"account-security:"+userId}))`,
     sql`SELECT pg_advisory_xact_lock(hashtext('fate-gameplay-toolkit:blob-storage'))`,
     sql`UPDATE fate_account_workspace SET deleting=TRUE WHERE user_id=${userId}`,
     sql`INSERT INTO deleted_rooms (code,gm_participant_id,gm_token_hash,deleted_at)

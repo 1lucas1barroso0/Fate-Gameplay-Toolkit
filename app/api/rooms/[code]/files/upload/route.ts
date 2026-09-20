@@ -34,7 +34,7 @@ export async function POST(request: Request, context: RouteContext) {
         return {
           addRandomSuffix: false,
           maximumSizeInBytes: MAX_ROOM_FILE_BYTES,
-          tokenPayload: await authorizeRoomFileUpload(roomCode, pathname, input),
+          tokenPayload: await authorizeRoomFileUpload(roomCode, pathname, input, request),
         };
       },
       onUploadCompleted: async ({ blob, tokenPayload }) => {

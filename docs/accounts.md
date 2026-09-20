@@ -1,22 +1,25 @@
 # Contas opcionais
 
-O site continua funcionando sem cadastro, com os dados guardados no aparelho.
+O site continua funcionando sem cadastro, com os dados guardados no dispositivo.
 O botão **Entrar** no topo permite criar conta, entrar e recuperar o acesso.
-Quem entra escolhe se quer copiar os dados do aparelho para a conta. Essa cópia
+Quem entra escolhe se quer copiar os dados do dispositivo para a conta. Essa cópia
 preserva os dados originais e acrescenta os registros à conta.
 
 Na conta, sincronizamos Fichas e suas imagens, conjuntos de regras, preferências,
 leitura e favoritos, histórico pessoal de dados, acessos às Mesas e rascunhos.
 O conteúdo compartilhado das Mesas continua no serviço existente.
-As alterações são enviadas após a edição; outros aparelhos verificam novidades
-a cada 15 segundos e ao voltar à aba ou recuperar a conexão. Mudanças independentes
+As alterações são enviadas após a edição; outros dispositivos verificam novidades
+a cada 30 segundos e ao voltar à aba ou recuperar a conexão. Mudanças independentes
 são combinadas; alterações incompatíveis pedem que a pessoa escolha uma versão.
-O salvamento pendente continua guardado neste aparelho se a conexão cair.
+O salvamento pendente continua guardado neste dispositivo se a conexão cair.
 
-**Sair da conta** mantém os dados e volta ao espaço local do aparelho. A saída
-aguarda as mudanças serem sincronizadas. Um cache separado permite recuperar
+**Sair da conta** mantém os dados e volta ao espaço local do dispositivo. A saída
+primeiro tenta sincronizar. Se a conexão falhar ou houver conflito, um cache separado permite recuperar
 alterações pendentes depois de entrar novamente na mesma conta. As senhas nunca
 entram nesse cache; a sessão usa um cookie HttpOnly.
+Uma saída sem conexão fica registrada neste dispositivo: recarregar a página
+mantém o modo sem conta. A sessão do servidor é encerrada quando a conexão
+volta, antes de uma nova entrada. A saída também se propaga às outras abas.
 
 **Apagar cadastro** exige senha e confirmação. Uma transação remove usuário,
 credenciais, sessões, preferências, Fichas, imagens e vínculos. As Mesas criadas
@@ -32,6 +35,9 @@ A chave de recuperação é mostrada ao cadastrar e pode ser substituída em
 redefinir a senha, encerrando as sessões anteriores. Não há envio de e-mail
 nem exigência de outro serviço. O endereço funciona como identificação de acesso;
 não é apresentado como e-mail verificado.
+Novas senhas têm de 15 a 128 caracteres. Senhas existentes continuam aceitas
+para entrar. Trocar a senha mantém a sessão atual, encerra as demais e invalida
+a chave de recuperação anterior na mesma transação. A interface orienta criar outra.
 
 ## Configuração e limites
 
@@ -52,7 +58,17 @@ carência antes da coleta; apagar o cadastro remove todas as imagens da conta.
 Todos os acessos aos dados verificam sessão e conta esperada. Gravações validam
 a origem, o tamanho do pedido e os dados; tentativas de login e cadastro usam
 o limitador compartilhado do banco. Escritas incluem a revisão esperada para
-evitar a substituição silenciosa de dados de outro aparelho.
+evitar a substituição silenciosa de dados de outro dispositivo.
+Uma Mesa vinculada à conta exige também a sessão dessa conta; um token local
+antigo sozinho não permite contornar a saída ou a troca de senha. O vínculo de
+Mesas importadas só é gravado junto com uma revisão aceita dos dados.
+Respostas de uma sessão encerrada e imagens em processamento não podem alterar
+o espaço aberto depois dela, mesmo se for a mesma conta.
+
+Consultas sem alterações retornam 204 sem carregar o conjunto de dados. Abas
+ocultas e dispositivos sem conexão não consultam periodicamente; falhas usam
+espera progressiva e respeitam Retry-After. Ao entrar, sessões expiradas são
+limpas e ficam no máximo 20 sessões ativas por conta.
 
 ## Verificação
 

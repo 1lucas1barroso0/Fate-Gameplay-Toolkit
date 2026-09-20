@@ -8,6 +8,8 @@ export function flushWorkspace() {
 }
 const CACHE = PREFIX + "account-cache.";
 let accountId: string | null = null;
+let epoch = 0;
+export const workspaceEpoch = () => epoch;
 let envelope: { base: WorkspaceSnapshot; data: WorkspaceData } | null = null;
 let lastPersisted: string | null = null;
 export const currentAccountId = () => accountId;
@@ -26,7 +28,9 @@ function persist() {
     candidate = { base: latest.base.revision > envelope.base.revision ? latest.base : envelope.base, data: merged.data };
   }
   const serialized = JSON.stringify(candidate);
-  globalThis.localStorage.setItem(CACHE + accountId, serialized);
+  // A cache refresh is a read, not a write. Another tab may save after our
+  // getItem above; rewriting an unchanged snapshot would erase its new edit.
+  if (serialized !== raw) globalThis.localStorage.setItem(CACHE + accountId, serialized);
   const changed = JSON.stringify(candidate.data) !== JSON.stringify(envelope.data);
   envelope = candidate; lastPersisted = serialized;
   if (changed) emit(WORKSPACE_EVENT);
@@ -52,6 +56,7 @@ export function selectWorkspace(id: string | null, snapshot?: WorkspaceSnapshot)
     persist();
   }
   } catch (error) { accountId = previousId; envelope = previousEnvelope; lastPersisted = previousPersisted; throw error; }
+  epoch++;
   emit(WORKSPACE_EVENT);
 }
 export function workspaceBase(): WorkspaceSnapshot { return envelope?.base ?? { revision: 0, data: {} }; }

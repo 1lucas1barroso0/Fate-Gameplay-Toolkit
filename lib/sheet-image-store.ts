@@ -1,4 +1,4 @@
-import { imageDatabaseName } from "@/lib/workspace-storage";
+import { imageDatabaseName, workspaceEpoch } from "@/lib/workspace-storage";
 import {
   isLegacySheetImage,
   isStoredSheetImage,
@@ -183,12 +183,18 @@ export async function saveSheetImageBlob(
   framing: Pick<StoredSheetImage, "positionX" | "positionY" | "zoom" | "alt">,
   manager?: StorageManagerLike,
 ): Promise<StoredSheetImage> {
+  const epoch = workspaceEpoch();
+  const checkWorkspace = () => { if (workspaceEpoch() !== epoch) throw Error("account_changed"); };
   const hash = await hashSheetImage(blob);
+  checkWorkspace();
   const blobId = `img_${hash}`;
   const existing = await getSheetImageRecord(blobId);
+  checkWorkspace();
   if (!existing) {
     await assertLocalWriteCapacity(blob.size, manager);
+    checkWorkspace();
     const database = await openSheetImageDatabase();
+    checkWorkspace();
     const transaction = writableImageTransaction(database);
     const record: SheetImageRecord = {
       id: blobId,
@@ -205,6 +211,7 @@ export async function saveSheetImageBlob(
       if (error instanceof DOMException && error.name === "QuotaExceededError") throw new LocalStorageQuotaError();
       throw error;
     }
+    checkWorkspace();
     const confirmed = await getSheetImageRecord(blobId);
     if (!confirmed || confirmed.bytes !== blob.size) {
       throw new Error("A imagem não foi confirmada no armazenamento local. A Ficha anterior foi preservada.");

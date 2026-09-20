@@ -508,7 +508,7 @@ function readCredentials(request: Request) {
   return { participantId, token };
 }
 
-async function authorizeCredentials(participantId: string, token: string, roomCode: string): Promise<AuthRow> {
+async function authorizeCredentials(participantId: string, token: string, roomCode: string, request?: Request): Promise<AuthRow> {
   const sql = await getRoomDb();
   const tokenHash = await hashRoomToken(token);
   const result = await sql`
@@ -530,12 +530,26 @@ async function authorizeCredentials(participantId: string, token: string, roomCo
   `;
   const row = rows<AuthRow>(result)[0];
   if (!row) throw new RoomHttpError("Esta entrada não é válida neste dispositivo.", 401);
+  // Once imported into an account, a table token alone must not bypass logout
+  // or password-based session revocation. Unlinked guest access stays available.
+  const { getAccountDb } = await import("@/lib/server/account-db");
+  const accountDb = await getAccountDb();
+  const membership = await accountDb`SELECT user_id FROM fate_account_membership WHERE participant_id=${participantId}`;
+  if (membership[0]) {
+    if (!request) throw new RoomHttpError("Entre na conta vinculada a esta Mesa.", 401);
+    const { getAuth } = await import("@/lib/server/auth");
+    const session = await (await getAuth()).api.getSession({ headers: request.headers });
+    if (session?.user.id !== membership[0].user_id) throw new RoomHttpError("Entre na conta vinculada a esta Mesa.", 401);
+    if (!["GET", "HEAD"].includes(request.method) && (request.headers.get("origin") !== new URL(request.url).origin || request.headers.get("sec-fetch-site") === "cross-site")) {
+      throw new RoomHttpError("Abra o Fate novamente para continuar.", 403);
+    }
+  }
   return row;
 }
 
 export async function authorize(request: Request, roomCode: string) {
   const { participantId, token } = readCredentials(request);
-  return authorizeCredentials(participantId, token, roomCode);
+  return authorizeCredentials(participantId, token, roomCode, request);
 }
 
 function participantFromRow(row: {
@@ -931,10 +945,11 @@ export async function authorizeRoomFileUpload(
   roomCode: string,
   pathname: string,
   input: RoomFileUploadRequest,
+  request?: Request,
 ) {
   const sql = await getRoomDb();
   await assertDatabaseWritable(sql);
-  const self = await authorizeCredentials(input.participantId, input.token, roomCode);
+  const self = await authorizeCredentials(input.participantId, input.token, roomCode, request);
   if (self.status !== "approved") throw new RoomHttpError("Aguarde a aprovação do narrador.", 403);
 
   const expectedPathname = `rooms/${self.roomCode}/${self.id}/${input.requestId}`;
@@ -1273,7 +1288,7 @@ export async function deleteRoom(request: Request, roomCode: string) {
   const credentials = readCredentials(request);
   let self: AuthRow;
   try {
-    self = await authorizeCredentials(credentials.participantId, credentials.token, roomCode);
+    self = await authorizeCredentials(credentials.participantId, credentials.token, roomCode, request);
   } catch (error) {
     if (error instanceof RoomHttpError && error.status === 401 && await deletedRoomReplay(sql, roomCode, credentials.participantId, credentials.token)) {
       return { deleted: false, filesQueued: 0, cleanupPending: false };

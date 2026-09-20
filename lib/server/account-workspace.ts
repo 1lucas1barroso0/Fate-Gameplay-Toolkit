@@ -8,8 +8,11 @@ type AccountSql = Awaited<ReturnType<typeof getAccountDb>>;
 
 export async function accountSnapshot(userId: string, database?: AccountSql) {
   const sql = database ?? await getAccountDb();
-  await sql`INSERT INTO fate_account_workspace (user_id) SELECT id FROM fate_user WHERE id = ${userId} ON CONFLICT (user_id) DO NOTHING`;
-  const result = await sql`SELECT revision, data_json FROM fate_account_workspace WHERE user_id = ${userId} AND deleting = FALSE`;
+  let result = await sql`SELECT revision, data_json FROM fate_account_workspace WHERE user_id = ${userId} AND deleting = FALSE`;
+  if (!result.length) {
+    await sql`INSERT INTO fate_account_workspace (user_id) SELECT id FROM fate_user WHERE id = ${userId} ON CONFLICT (user_id) DO NOTHING`;
+    result = await sql`SELECT revision, data_json FROM fate_account_workspace WHERE user_id = ${userId} AND deleting = FALSE`;
+  }
   if (!result[0]) throw new AccountError("sign_in_required", 401);
   return { revision: Number(result[0].revision), data: JSON.parse(result[0].data_json) as WorkspaceData };
 }
@@ -17,13 +20,17 @@ export async function claimAccountRooms(userId: string, data: WorkspaceData, dat
   const sql = database ?? await getAccountDb();
   for (const room of roomAccesses(data)) {
     const hash = await hashRoomToken(room.token);
-    const result = await sql`
+    const transaction = await sql.transaction([
+      sql`SELECT pg_advisory_xact_lock(hashtext('fate-account-room-links'))`,
+      sql`
       INSERT INTO fate_account_membership (user_id,participant_id)
       SELECT ${userId},p.id FROM participants p JOIN rooms r ON r.id=p.room_id
       WHERE p.id=${room.participantId} AND p.token_hash=${hash} AND r.code=${room.roomCode}
       AND EXISTS (SELECT 1 FROM fate_account_workspace WHERE user_id=${userId} AND deleting=FALSE)
       ON CONFLICT(participant_id) DO UPDATE SET user_id=fate_account_membership.user_id
-      RETURNING user_id`;
+      RETURNING user_id`,
+    ]);
+    const result = transaction[1];
     // A deleted table may remain in an old device snapshot, but another account's access is never claimed.
     if (result[0] && result[0].user_id !== userId) throw new AccountError("room_already_linked", 409);
   }
@@ -34,22 +41,38 @@ export async function saveAccountSnapshot(userId: string, revision: number, inpu
   try { data = validateWorkspace(input); } catch { throw new AccountError("workspace_invalid", 400); }
   await assertDatabaseWritable(sql);
   await accountSnapshot(userId, database);
-  await claimAccountRooms(userId, data, sql);
+  const rooms = await Promise.all(roomAccesses(data).map(async room => ({ participant_id: room.participantId, token_hash: await hashRoomToken(room.token), room_code: room.roomCode })));
   const imageIds = workspaceImageIds(data);
   const images = await sql`SELECT id FROM fate_account_image WHERE user_id=${userId}`;
   if (imageIds.some(id => !images.some(row => row.id === id))) throw new AccountError("upload_images_first", 409);
   const transactions = await sql.transaction([
+    sql`SELECT pg_advisory_xact_lock(hashtext('fate-account-room-links')) WHERE ${rooms.length > 0}`,
     sql`SELECT pg_advisory_xact_lock(hashtext(${"account-images:"+userId}))`,
-    sql`UPDATE fate_account_workspace SET revision=revision+1, data_json=${JSON.stringify(data)} WHERE user_id=${userId} AND revision=${revision} AND deleting=FALSE
-      AND (SELECT COUNT(*) FROM fate_account_image WHERE user_id=${userId} AND id=ANY(${imageIds}::text[]))=${imageIds.length} RETURNING revision`,
+    sql`WITH requested AS (
+      SELECT * FROM jsonb_to_recordset(${JSON.stringify(rooms)}::jsonb) AS a(participant_id TEXT,token_hash TEXT,room_code TEXT)
+    ), valid AS (
+      SELECT p.id,m.user_id FROM requested a JOIN participants p ON p.id=a.participant_id AND p.token_hash=a.token_hash
+      JOIN rooms r ON r.id=p.room_id AND r.code=a.room_code LEFT JOIN fate_account_membership m ON m.participant_id=p.id
+    ), admitted AS (
+      SELECT user_id FROM fate_account_workspace WHERE user_id=${userId} AND revision=${revision} AND deleting=FALSE
+        AND (SELECT COUNT(*) FROM fate_account_image WHERE user_id=${userId} AND id=ANY(${imageIds}::text[]))=${imageIds.length}
+        AND NOT EXISTS (SELECT 1 FROM valid WHERE user_id<>${userId}) FOR UPDATE
+    ), linked AS (
+      INSERT INTO fate_account_membership(user_id,participant_id)
+      SELECT ${userId},v.id FROM valid v CROSS JOIN admitted ON CONFLICT(participant_id) DO NOTHING RETURNING participant_id
+    ), updated AS (
+      UPDATE fate_account_workspace SET revision=revision+1,data_json=${JSON.stringify(data)}
+      WHERE user_id IN (SELECT user_id FROM admitted) RETURNING revision
+    ) SELECT (SELECT revision FROM updated) AS revision,EXISTS(SELECT 1 FROM valid WHERE user_id<>${userId}) AS room_conflict`,
     // Read the committed row under the same lock as uploads and saves. Another
     // device's newly referenced image cannot be collected using a stale list.
     sql`DELETE FROM fate_account_image i USING fate_account_workspace w
       WHERE i.user_id=${userId} AND w.user_id=i.user_id AND i.created_at < ${Date.now()-86400000}
         AND POSITION(i.id IN w.data_json)=0`,
   ]);
-  const result = transactions[1];
-  if (!result[0]) return { conflict: true, snapshot: await accountSnapshot(userId, database) };
+  const result = transactions[2];
+  if (result[0]?.room_conflict) throw new AccountError("room_already_linked", 409);
+  if (result[0]?.revision == null) return { conflict: true, snapshot: await accountSnapshot(userId, database) };
   return { conflict: false, snapshot: { revision: Number(result[0].revision), data } };
 }
 export async function saveAccountImage(userId: string, id: string, contentType: string, base64: string, database?: AccountSql) {

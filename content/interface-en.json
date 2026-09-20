@@ -766,5 +766,7 @@
   "Participantes, Histórico, referências e todos os arquivos desta Mesa serão apagados. Fichas e regras deste dispositivo continuam intactas. Exporte o que quiser guardar: esta ação não pode ser desfeita.": "Participants, history, references, and all files in this table will be deleted. Sheets and rules on this device stay intact. Export anything you want to keep: this cannot be undone.",
   "Aqui ficam apenas dados que a ferramenta pode refazer ou dos quais já existe uma cópia segura. Esta limpeza não apaga Fichas, imagens, regras, acesso às Mesas nem dados compartilhados.": "This area only contains data the toolkit can rebuild or data that already has a safe copy. Cleaning it does not delete sheets, images, rules, table access, or shared data.",
   "Comece com o livro e mude só o que ajudar sua Mesa. Tudo fica neste dispositivo, e você pode voltar ao padrão quando quiser.": "Start with the book and change only what helps your table. Everything stays on this device, and you can return to the default at any time.",
-  "Rolando…": "Rolling…"
+  "Rolando…": "Rolling…",
+  "Entre na conta vinculada a esta Mesa.": "Sign in to the account linked to this table.",
+  "Abra o Fate novamente para continuar.": "Open Fate again to continue."
 }

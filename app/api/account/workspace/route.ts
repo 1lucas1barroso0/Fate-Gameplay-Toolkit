@@ -5,10 +5,10 @@ import { limitRoomRequest, requestLimitResponse } from "@/lib/server/request-lim
 export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
   try {
-    const { user } = await requireAccount(request);
-    const snapshot = await accountSnapshot(user.id);
+    const { user, workspaceRevision } = await requireAccount(request);
     const headers = { "Cache-Control": "no-store" };
-    if (new URL(request.url).searchParams.get("revision") === String(snapshot.revision)) return new Response(null, { status: 204, headers });
+    if (workspaceRevision >= 0 && new URL(request.url).searchParams.get("revision") === String(workspaceRevision)) return new Response(null, { status: 204, headers });
+    const snapshot = await accountSnapshot(user.id);
     return Response.json(snapshot, { headers });
   } catch (error) { return accountFailure(error); }
 }

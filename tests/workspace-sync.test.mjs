@@ -4,8 +4,9 @@ import 'fake-indexeddb/auto';
 import { createCharacter } from '../lib/fate.ts';
 import { PREFIX, mergeWorkspaces } from '../lib/workspace-data.ts';
 import { captureWorkspace, selectWorkspace, workspaceBase, workspaceStorage, forgetAccountCache, reloadAccountCache } from '../lib/workspace-storage.ts';
-import { saveSheetImageBlob, getSheetImageRecord, resetSheetImageDatabaseConnection, deleteAccountImageDatabase } from '../lib/sheet-image-store.ts';
+import { saveSheetImageBlob, getSheetImageRecord, listSheetImageRecords, resetSheetImageDatabaseConnection, deleteAccountImageDatabase } from '../lib/sheet-image-store.ts';
 import { synchronizeWorkspace, WorkspaceConflict } from '../lib/workspace-sync.ts';
+import { rememberSignOut, finishPendingSignOut, hasPendingSignOut } from '../lib/account-session.ts';
 class MemoryStorage {
   values = new Map();
   get length() { return this.values.size; }
@@ -90,4 +91,61 @@ test('sync preserves in-flight edits, applies independent remote changes and kee
   offline = false; server = { revision: server.revision + 1, data: { ...server.data, [PREFIX + 'language.v1']: 'fr' } };
   await assert.rejects(synchronizeWorkspace('sync'), WorkspaceConflict); assert.equal(captureWorkspace()[PREFIX + 'language.v1'], 'pt');
   selectWorkspace(null);
+});
+
+test('refreshing a tab never rewrites a snapshot over an edit saved during its read', context => {
+  selectWorkspace('refresh-race', { revision: 0, data: {} });
+  const cacheKey = PREFIX + 'account-cache.refresh-race';
+  const before = JSON.parse(localStorage.getItem(cacheKey));
+  const received = JSON.stringify({ ...before, data: { [PREFIX + 'language.v1']: 'pt' } });
+  const newer = JSON.stringify({ ...before, data: { [PREFIX + 'language.v1']: 'en' } });
+  localStorage.setItem(cacheKey, received);
+  const getItem = localStorage.getItem.bind(localStorage);
+  let interleave = true;
+  context.mock.method(localStorage, 'getItem', key => {
+    const value = getItem(key);
+    if (key === cacheKey && interleave) { interleave = false; localStorage.setItem(cacheKey, newer); }
+    return value;
+  });
+  reloadAccountCache({ key: cacheKey, newValue: received });
+  assert.equal(localStorage.getItem(cacheKey), newer);
+  reloadAccountCache({ key: cacheKey, newValue: newer });
+  assert.equal(captureWorkspace()[PREFIX + 'language.v1'], 'en');
+  selectWorkspace(null);
+});
+
+test('a delayed sync cannot write into a reopened session of the same account', async context => {
+  selectWorkspace('reopened', { revision: 0, data: {} });
+  let finish;
+  context.mock.method(globalThis,'fetch',()=>new Promise(resolve=>{finish=resolve;}));
+  const syncing=synchronizeWorkspace('reopened');
+  selectWorkspace(null); selectWorkspace('reopened');
+  workspaceStorage.setItem(PREFIX+'language.v1','en');
+  finish(Response.json({ revision: 1,data:{ [PREFIX+'language.v1']:'pt' } }));
+  await assert.rejects(syncing,/account_changed/);
+  assert.equal(captureWorkspace()[PREFIX+'language.v1'],'en');
+  assert.equal(workspaceBase().revision,0); selectWorkspace(null);
+});
+
+test('an image in flight cannot leak into the next workspace', async () => {
+  selectWorkspace('image-old',{revision:0,data:{}});
+  await assert.rejects(saveSheetImageBlob(new Blob(['delayed image'],{type:'image/png'}),{positionX:50,positionY:50,zoom:1,alt:''},{
+    estimate:async()=>{ selectWorkspace('image-new',{revision:0,data:{}}); return {usage:0,quota:1000000000}; },
+  }),/account_changed/);
+  assert.deepEqual(await listSheetImageRecords(),[]); selectWorkspace(null);
+});
+
+test('offline sign-out stays pending across reloads, preserves edits and retries for the original account only', async context => {
+  selectWorkspace('offline-exit',{revision:0,data:{}});
+  workspaceStorage.setItem(PREFIX+'language.v1','en');
+  rememberSignOut('offline-exit'); selectWorkspace(null);
+  let offline=true;
+  context.mock.method(globalThis,'fetch',async (url,options)=>{
+    assert.equal(url,'/api/auth/sign-out'); assert.equal(options.headers['x-fate-account'],'offline-exit');
+    if(offline) throw Error('offline');
+    return Response.json({code:'account_changed'},{status:409});
+  });
+  await assert.rejects(finishPendingSignOut(),/offline/); assert.equal(hasPendingSignOut(),true);
+  selectWorkspace('offline-exit'); assert.equal(captureWorkspace()[PREFIX+'language.v1'],'en'); selectWorkspace(null);
+  offline=false; await finishPendingSignOut(); assert.equal(hasPendingSignOut(),false);
 });
