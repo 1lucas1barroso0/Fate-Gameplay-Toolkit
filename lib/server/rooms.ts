@@ -993,7 +993,8 @@ export async function authorizeRoomFileUpload(
             ${cleanedName}, ${cleanedContentType}, ${input.size}, ${now}
           WHERE
             ${input.size} > 0
-            AND ${input.size} <= ${MAX_ROOM_FILE_BYTES}
+            -- Untyped parameters compare as text and reject small images.
+            AND ${input.size}::BIGINT <= ${MAX_ROOM_FILE_BYTES}::BIGINT
             AND (
               SELECT COALESCE(SUM(file_size), 0) FROM entries
               WHERE room_id = ${self.roomId} AND type = 'file'
