@@ -95,3 +95,10 @@
 .custom-sheet-section article, .custom-sheet-section .field-stack { min-width: 0; }
 .custom-sheet-section article p, .clean-custom-rules dd { white-space: pre-wrap; overflow-wrap: anywhere; }
 .consequence-definition { flex-wrap: wrap; }
+
+/* Keep long custom field labels separate from their values. */
+.clean-custom-rules { grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); }
+.clean-custom-rules article { min-width: 0; }
+.clean-custom-rules dl { grid-template-columns: minmax(0, 1fr); gap: 0.35rem; }
+.clean-custom-rules dt { min-width: 0; font-weight: 700; }
+.clean-custom-rules dt, .clean-custom-rules dd { overflow-wrap: anywhere; }
