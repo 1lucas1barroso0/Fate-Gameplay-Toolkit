@@ -16,14 +16,22 @@ function stable(value: unknown, path = ""): string {
   return JSON.stringify(value);
 }
 export function compareBackup<T extends FateCharacter | RulesProfile>(incoming: T[], local: T[]) {
+  // Compute local fingerprints once; images embedded in backups can be large.
+  const fingerprints = new Set<string>();
+  const byId = new Map<string, T>();
+  for (const item of local) {
+    fingerprints.add(stable(item));
+    if (!byId.has(item.id)) byId.set(item.id, item);
+  }
   return incoming.map(item => {
     const fingerprint = stable(item);
-    const identical = local.find(value => stable(value) === fingerprint);
-    const existing = local.find(value => value.id === item.id);
+    const identical = fingerprints.has(fingerprint);
+    const existing = byId.get(item.id);
     return { item, status: identical ? "same" as const : existing ? "copy" as const : "new" as const,
       changed: existing ? Object.keys(item).filter(key => !["id", "createdAt", "updatedAt"].includes(key) && stable(item[key as keyof T], "." + key) !== stable(existing[key as keyof T], "." + key)) : [] };
   });
 }
+
 export type BackupReminder = { days: number; lastExportAt: number; snoozedUntil: number };
 export function readBackupReminder(): BackupReminder {
   try {

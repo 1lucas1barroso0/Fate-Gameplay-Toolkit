@@ -22,11 +22,13 @@ Fate Condensado continua sendo a regra principal. Os demais livros são identifi
 - Drizzle Kit para evolução versionada do banco.
 - Vercel para hospedagem e GitHub para a fonte do projeto.
 
-As Fichas, preferências, rolagens pessoais e conjuntos personalizados permanecem no armazenamento do próprio dispositivo. Apenas os dados publicados em uma Mesa usam o backend compartilhado.
+Sem conta, Fichas, preferências, rolagens pessoais e conjuntos personalizados ficam no dispositivo. A conta é opcional: ao entrar, o espaço da conta sincroniza os dados e as imagens entre dispositivos. O espaço local continua separado.
+
+Sair mantém os dados. Apagar a conta remove seus registros e agenda a remoção de arquivos externos; essa limpeza pode aguardar a recuperação do serviço de armazenamento. Cópias exportadas fora do site não podem ser apagadas remotamente.
 
 ## Armazenamento sustentável
 
-Imagens de Fichas ficam como Blobs deduplicados no IndexedDB; `localStorage`, backup e Undo guardam apenas referências. A área **Seu Fate → Armazenamento** mede o uso disponível, exporta dados e oferece limpezas específicas e confirmadas.
+Imagens de Fichas ficam como Blobs deduplicados no IndexedDB; `localStorage` e Undo guardam referências. A exportação completa inclui as imagens atuais, para que a cópia possa ser importada em outro dispositivo. A área **Seu Fate → Armazenamento** mede o uso disponível, exporta dados e oferece limpezas específicas e confirmadas.
 
 Arquivos das Mesas têm limites preventivos por arquivo, Mesa e projeto. Exclusões removem também o Blob privado, uma fila durável recupera falhas e Mesas apagadas são revarridas para capturar uploads tardios. O Histórico permanece paginado e pode ser exportado ou limpo parcialmente pelo narrador.
 
@@ -34,7 +36,7 @@ Todos os limites, margens, retenções e comportamentos de quota estão document
 
 ## Desenvolvimento local
 
-Requisitos: Node.js 22 e uma base Postgres compatível com Neon. Arquivos compartilhados também exigem um Vercel Blob privado.
+Requisitos: Node.js 22.13 ou superior e uma base Postgres compatível com Neon. Arquivos compartilhados também exigem um Vercel Blob privado.
 
 ```bash
 cp .env.example .env.local
@@ -47,6 +49,8 @@ Variáveis necessárias para usar as Mesas:
 - `DATABASE_URL`: conexão Postgres.
 - `BLOB_READ_WRITE_TOKEN`: credencial do Vercel Blob.
 
+Para contas, `BETTER_AUTH_URL` define a origem autorizada e `BETTER_AUTH_SECRET` pode fornecer o segredo de autenticação. Sem esse segredo, a aplicação cria um valor aleatório persistente no banco. Veja `.env.example`. O e-mail ainda não é verificado; recuperar acesso depende da chave de recuperação.
+
 A aplicação cria de forma idempotente as tabelas necessárias no primeiro uso. Para produzir e versionar uma migração depois de alterar `db/schema.ts`, use `npm run db:generate`.
 
 ## Verificação
@@ -56,7 +60,9 @@ npm run lint
 npm test
 ```
 
-`npm test` produz a compilação de produção antes de executar as verificações de conteúdo, interface, persistência e regressão.
+`npm test` produz a compilação de produção antes de executar as verificações de conteúdo, interface, persistência e regressão. Depois da compilação, `npm run test:e2e` verifica os fluxos em Chromium nos tamanhos de computador e celular. A automação do GitHub executa ambos e guarda evidências quando um teste de navegador falha.
+
+A análise de forças, fraquezas, oportunidades, ameaças e limites conhecidos está em [docs/project-review.md](docs/project-review.md).
 
 ## Publicação
 
