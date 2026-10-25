@@ -429,7 +429,7 @@ test("keeps rules, rolls and Mesas direct and visually quiet", async () => {
   assert.match(rules, /sort\(\(a, b\) => Number\(b\[0\]\) - Number\(a\[0\]\)\)/);
   assert.match(rules, /Comece com o livro\. Mude só o que ajudar a mesa\./);
   assert.doesNotMatch(rules, /placeholder=\{language === "pt" \? "Buscar regra/);
-  assert.match(dice, /Quatro dados, três faces equiprováveis em cada dado\./);
+  assert.match(dice, /Escolha uma perícia, diga o que vai tentar e role quando a mesa pedir\./);
   assert.match(dice, /Cada face \(−, 0 ou \+\) tem exatamente 1\/3 de chance\./);
   assert.doesNotMatch(dice, /superar a fechadura|Pronto para rolar|Geração criptográfica|amostragem sem viés|81 combinações|Chance do total natural<\/h2>/);
   assert.match(styles, /\.probability-panel \{ min-width: 0; align-self: start;/);
