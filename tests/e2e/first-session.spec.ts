@@ -1,0 +1,36 @@
+import { test, expect } from "@playwright/test";
+
+test("first visit leads to a sheet, keeps the roll ready and explains joining a table", async ({ page }) => {
+  await page.goto("/");
+  const guide = page.locator(".getting-started");
+  await expect(guide).toHaveJSProperty("open", true);
+  await guide.getByRole("button", { name: "Criar uma Ficha", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("Nome da Ficha", { exact: true }).fill("A exploradora");
+  await dialog.getByLabel("Nome da Ficha", { exact: true }).press("Enter");
+  await expect(dialog).toBeHidden();
+  await expect(page.locator(".sheet-name-field")).toHaveValue("A exploradora");
+  await guide.locator("summary").click();
+  await expect(guide).toHaveJSProperty("open", false);
+  await page.getByRole("button", { name: "Rolar com esta Ficha", exact: true }).click();
+  await expect(page.locator(".roll-active-sheet")).toContainText("A exploradora");
+  await page.locator(".modifier-field input").fill("4");
+  await page.locator(".roll-label-field input").fill("Saltar o abismo");
+  await page.getByRole("button", { name: "Rolar neste dispositivo", exact: true }).click();
+  await expect(page.locator(".roll-total")).toContainText("Saltar o abismo");
+  await page.getByRole("button", { name: "Voltar à Ficha", exact: true }).click();
+  await expect(page.locator(".sheet-name-field")).toHaveValue("A exploradora");
+  await expect(page.locator(".getting-started")).toHaveJSProperty("open", false);
+  await page.getByRole("button", { name: "Rolar com esta Ficha", exact: true }).click();
+  await expect(page.locator(".modifier-field input")).toHaveValue("4");
+  await expect(page.locator(".roll-label-field input")).toHaveValue("Saltar o abismo");
+  await expect(page.locator(".roll-total")).toContainText("Saltar o abismo");
+  await page.getByRole("button", { name: "Abrir Mesas", exact: true }).click();
+  await expect(page.locator("#room-code-help")).toContainText("6 caracteres");
+  await expect(page.getByPlaceholder("ABC234")).toHaveAttribute("aria-describedby", "room-code-help");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+  await page.getByRole("tab", { name: "Fichas", exact: true }).click();
+  await page.getByRole("button", { name: "English", exact: true }).click();
+  await expect(page.locator(".getting-started > summary")).toHaveText("First time here?");
+  await expect(page.getByRole("button", { name: "Roll with this sheet", exact: true })).toBeVisible();
+});

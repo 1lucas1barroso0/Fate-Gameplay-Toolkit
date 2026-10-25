@@ -6,8 +6,9 @@ import { workspaceStorage as localStorage } from "@/lib/workspace-storage";
 import { t, useAppLanguage, getAppLanguage, uiLabel } from "@/lib/app-language";
 
 import * as React from "react";
+import { GettingStarted } from "@/components/getting-started";
 import { SheetPicker } from "@/components/sheet-picker";
-import { BookOpen, ChevronDown, Copy, Download, Eye, FileUp, Link2, Pencil, Plus, RotateCcw, Settings2, Sparkles, Trash2, Undo2, UsersRound } from "lucide-react";
+import { BookOpen, ChevronDown, Copy, Dices, Download, Eye, FileUp, Link2, Pencil, Plus, RotateCcw, Settings2, Sparkles, Trash2, Undo2, UsersRound } from "lucide-react";
 import { toast } from "sonner";
 import { SheetImage } from "@/components/sheet-image";
 import { SheetView } from "@/components/sheet-view";
@@ -81,9 +82,11 @@ type CharacterSheetProps = {
   onOpenRulesSettings: (profileId: string) => void;
   onSelectRulesProfile: (profileId: string) => void;
   onImportTableConfig: (input: unknown) => RulesProfile;
+  onOpenDice?: () => void;
+  onOpenRooms?: () => void;
 };
 
-export function CharacterSheet({ store, tableConfig, rulesProfiles, activeRulesProfileId, savedRooms, onOpenLinkedRoom, onOpenLinkedRules, onOpenRulesSettings, onSelectRulesProfile, onImportTableConfig }: CharacterSheetProps) {
+export function CharacterSheet({ store, tableConfig, rulesProfiles, activeRulesProfileId, savedRooms, onOpenLinkedRoom, onOpenLinkedRules, onOpenRulesSettings, onSelectRulesProfile, onImportTableConfig, onOpenDice, onOpenRooms }: CharacterSheetProps) {
   useAppLanguage();
   const character = store.activeCharacter;
   const structure = tableConfig.sheetStructure;
@@ -189,7 +192,7 @@ export function CharacterSheet({ store, tableConfig, rulesProfiles, activeRulesP
           <SheetPicker characters={store.characters} activeId={store.activeId} onSelect={store.setActiveId} rooms={savedRooms} profiles={rulesProfiles} />
           <div className="sheet-mode-switch" role="group" aria-label={t("Modo da Ficha")}><Button type="button" size="sm" variant={mode === "edit" ? "default" : "ghost"} aria-pressed={mode === "edit"} onClick={() => changeMode("edit")}><Pencil /> {t("Editar")}</Button><Button type="button" size="sm" variant={mode === "view" ? "default" : "ghost"} aria-pressed={mode === "view"} onClick={() => changeMode("view")}><Eye /> {t("Visualizar")}</Button></div>
           {mode === "edit" && <div className="sheet-edit-actions">
-            <Dialog open={newOpen} onOpenChange={setNewOpen}><DialogTrigger asChild><Button className="sheet-new-action" size="sm"><Plus /> {t("Nova Ficha")}</Button></DialogTrigger><DialogContent><DialogHeader><DialogTitle>{t("Nova Ficha")}</DialogTitle><DialogDescription>{t("Ela pode representar uma pessoa, criatura, veículo, lugar, organização ou qualquer outra coisa.")}</DialogDescription></DialogHeader><Label htmlFor="new-sheet-name">{t("Nome da Ficha")}</Label><Input id="new-sheet-name" value={newName} maxLength={240} autoFocus onChange={(event) => setNewName(event.target.value)} /><DialogFooter><Button onClick={() => { store.addCharacter(newName.trim() || undefined, { rulesProfileId: activeRulesProfileId }); setNewName(""); setNewOpen(false); }}>{t("Criar Ficha")}</Button></DialogFooter></DialogContent></Dialog>
+            <Dialog open={newOpen} onOpenChange={setNewOpen}><DialogTrigger asChild><Button className="sheet-new-action" size="sm"><Plus /> {t("Nova Ficha")}</Button></DialogTrigger><DialogContent><DialogHeader><DialogTitle>{t("Nova Ficha")}</DialogTitle><DialogDescription>{t("Ela pode representar uma pessoa, criatura, veículo, lugar, organização ou qualquer outra coisa.")}</DialogDescription></DialogHeader><form className="new-sheet-form" onSubmit={event => { event.preventDefault(); store.addCharacter(newName.trim() || undefined, { rulesProfileId: activeRulesProfileId }); setNewName(""); changeMode("edit"); setNewOpen(false); }}><Label htmlFor="new-sheet-name">{t("Nome da Ficha")}</Label><Input id="new-sheet-name" value={newName} maxLength={240} autoFocus onChange={(event) => setNewName(event.target.value)} placeholder={t("Como ela se chama?", "What is it called?")} /><DialogFooter><Button type="submit">{t("Criar Ficha")}</Button></DialogFooter></form></DialogContent></Dialog>
             <div className="sheet-utility-actions" role="group" aria-label={t("Ações desta Ficha")}>
               <Button variant="outline" size="icon-sm" onClick={store.undo} aria-label={t("Desfazer última mudança")}><Undo2 /></Button><Button variant="outline" size="icon-sm" onClick={store.duplicateCharacter} aria-label={t("Duplicar Ficha")}><Copy /></Button><Button variant="outline" size="icon-sm" onClick={() => void exportSheet()} aria-label={t("Exportar Ficha")}><Download /></Button><Button variant="outline" size="icon-sm" onClick={() => fileInput.current?.click()} aria-label={t("Importar Ficha")}><FileUp /></Button><input ref={fileInput} type="file" accept="application/json,.json" hidden onChange={importFile} />
               <AlertDialog><AlertDialogTrigger asChild><Button variant="outline" size="icon-sm" aria-label={t("Excluir Ficha")}><Trash2 /></Button></AlertDialogTrigger><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>{t("Excluir esta Ficha?")}</AlertDialogTitle><AlertDialogDescription>{t("Ela sairá deste dispositivo. Exporte antes se quiser guardar uma cópia completa.")}</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>{t("Cancelar")}</AlertDialogCancel><AlertDialogAction variant="destructive" onClick={store.deleteActive}>{t("Excluir")}</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
@@ -197,6 +200,13 @@ export function CharacterSheet({ store, tableConfig, rulesProfiles, activeRulesP
           </div>}
         </div>
       </header>
+
+      {onOpenRooms && <GettingStarted onCreate={() => { changeMode("edit"); setNewOpen(true); }} onRooms={onOpenRooms} onRules={() => onOpenLinkedRules(linkedProfile?.id ?? activeRulesProfileId)} />}
+      <nav className="session-shortcuts" aria-label={t("Jogar com esta Ficha", "Play with this sheet")}>
+        {onOpenDice && <Button type="button" variant="outline" onClick={onOpenDice}><Dices /> {t("Rolar com esta Ficha", "Roll with this sheet")}</Button>}
+        {onOpenRooms && <Button type="button" variant="ghost" onClick={() => linkedRoom ? void onOpenLinkedRoom(linkedRoom.session.participantId).catch(error => toast.error(error instanceof Error ? error.message : t("A Mesa não pôde ser aberta."))) : onOpenRooms()}><UsersRound /> {linkedRoom ? t("Abrir Mesa da Ficha", "Open this sheet’s table") : t("Entrar em uma Mesa", "Join a table")}</Button>}
+        <Button type="button" variant="ghost" onClick={() => onOpenLinkedRules(linkedProfile?.id ?? activeRulesProfileId)}><BookOpen /> {t("Consultar regras", "Look up rules")}</Button>
+      </nav>
 
       <div className="sheet-links-wrap">
         <DropdownMenu>

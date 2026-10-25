@@ -40,6 +40,7 @@ export function FateApp() {
   const tableStore = useTableConfig();
   const [workspace, setWorkspace] = React.useState<Workspace>("ficha");
   const [ruleTarget, setRuleTarget] = React.useState("");
+  const [diceOpened, setDiceOpened] = React.useState(false);
   const { characters, activeCharacter, activeId, hydrated: charactersHydrated, replaceRulesProfileLink, replaceRoomLink } = characterStore;
   const { savedRooms, session, hydrated: roomsHydrated, linkRulesProfile, replaceRulesProfileLink: replaceRoomRulesProfileLink } = roomStore;
   const { profiles, activeProfileId, hydrated: rulesHydrated, getProfile, selectProfile } = tableStore;
@@ -54,9 +55,9 @@ export function FateApp() {
       let saved: string | null = null;
       try { saved = localStorage.getItem("fate-gameplay-toolkit.workspace"); } catch { /* Navigation still works without storage. */ }
       saved = fromHash() ?? saved;
-      if (saved === "ficha" || saved === "regras" || saved === "dados" || saved === "salas" || saved === "seu-fate") setWorkspace(saved);
+      if (saved === "ficha" || saved === "regras" || saved === "dados" || saved === "salas" || saved === "seu-fate") { setWorkspace(saved); if (saved === "dados") setDiceOpened(true); }
     }, 0);
-    const navigate = () => { const next = fromHash(); if (next) { setRuleTarget(""); setWorkspace(next); } };
+    const navigate = () => { const next = fromHash(); if (next) { setRuleTarget(""); setWorkspace(next); if (next === "dados") setDiceOpened(true); } };
     window.addEventListener("hashchange", navigate);
     return () => { window.clearTimeout(handle); window.removeEventListener("hashchange", navigate); };
   }, []);
@@ -64,6 +65,7 @@ export function FateApp() {
   const changeWorkspace = (value: string) => {
     const next = value as Workspace;
     setWorkspace(next);
+    if (next === "dados") setDiceOpened(true);
     if (next !== "regras") setRuleTarget("");
     const hash = `#${next}`;
     if (window.location.hash !== hash) window.history.pushState(null, "", hash);
@@ -170,9 +172,9 @@ export function FateApp() {
 
         <main id="workspace-content">
           <BackupReminder onOpen={() => changeWorkspace("seu-fate")} />
-          <TabsContent value="ficha"><CharacterSheet store={characterStore} tableConfig={tableStore.config} rulesProfiles={tableStore.profiles} activeRulesProfileId={tableStore.activeProfileId} savedRooms={roomStore.savedRooms} onOpenLinkedRoom={openSavedRoom} onOpenLinkedRules={openRules} onOpenRulesSettings={openRulesSettings} onSelectRulesProfile={selectSheetRules} onImportTableConfig={tableStore.importConfig} /></TabsContent>
+          <TabsContent value="ficha"><CharacterSheet store={characterStore} tableConfig={tableStore.config} rulesProfiles={tableStore.profiles} activeRulesProfileId={tableStore.activeProfileId} savedRooms={roomStore.savedRooms} onOpenLinkedRoom={openSavedRoom} onOpenLinkedRules={openRules} onOpenRulesSettings={openRulesSettings} onSelectRulesProfile={selectSheetRules} onImportTableConfig={tableStore.importConfig} onOpenDice={() => changeWorkspace("dados")} onOpenRooms={() => changeWorkspace("salas")} /></TabsContent>
           <TabsContent value="regras"><RulesLibrary openReference={ruleTarget} roomReady={roomStore.roomReady} onShareRule={async (title, reference) => { await roomStore.postRule(title, reference); }} tableConfig={tableStore.config} onOpenSettings={() => openRulesSettings(tableStore.activeProfileId)} roomStore={roomStore} onOpenRooms={() => changeWorkspace("salas")} /></TabsContent>
-          <TabsContent value="dados"><DiceRoller character={characterStore.activeCharacter} roomReady={roomStore.roomReady} onRoomRoll={roomStore.roll} tableConfig={tableStore.config} onOpenSettings={() => openRulesSettings(tableStore.activeProfileId)} /></TabsContent>
+          <TabsContent value="dados" forceMount={diceOpened ? true : undefined} hidden={workspace !== "dados"}><DiceRoller onOpenSheets={() => changeWorkspace("ficha")} onOpenRooms={() => changeWorkspace("salas")} character={characterStore.activeCharacter} roomReady={roomStore.roomReady} onRoomRoll={roomStore.roll} tableConfig={tableStore.config} onOpenSettings={() => openRulesSettings(tableStore.activeProfileId)} /></TabsContent>
           <TabsContent value="salas"><Rooms store={roomStore} onOpenRule={openSharedRule} rulesProfiles={tableStore.profiles} activeRulesProfileId={tableStore.activeProfileId} onSelectRulesProfile={tableStore.selectProfile} onOpenRulesProfile={openRules} onOpenSheets={() => changeWorkspace("ficha")} onOpenDice={() => changeWorkspace("dados")} /></TabsContent>
           <TabsContent value="seu-fate"><TableSettings store={tableStore} savedRooms={roomStore.savedRooms} roomReady={roomStore.roomReady} onShare={roomStore.postNote} onOpenRule={openSharedRule} onOpenRoom={openSavedRoom} onDeleteProfile={deleteRulesProfile} onDeleteProfiles={deleteRulesProfiles} characterStore={characterStore} roomStore={roomStore} /></TabsContent>
         </main>

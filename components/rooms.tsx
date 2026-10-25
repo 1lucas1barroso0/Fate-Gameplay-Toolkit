@@ -204,7 +204,7 @@ function RoomOnboarding({ store, rulesProfiles, activeRulesProfileId, onSelectRu
           <Users aria-hidden="true" />
           <p className="eyebrow">{t("Juntos, a história vai mais longe")}</p>
           <h2>{t("Uma Mesa.")}<br /> {t("Muitas possibilidades.")}</h2>
-          <p>{t("Reúna seu grupo e compartilhe as rolagens, as descobertas e os próximos capítulos.")}</p>
+          <p>{t("Já recebeu um código? Peça para entrar. Vai narrar? Crie a Mesa e envie o código ao grupo.", "Got a code? Ask to join. Narrating? Create a table and send the code to your group.")}</p>
         </div>
       <Tabs defaultValue="join">
         <TabsList>
@@ -216,6 +216,9 @@ function RoomOnboarding({ store, rulesProfiles, activeRulesProfileId, onSelectRu
             <Label className="field-stack">
               <span>{t("Código da Mesa")}</span>
               <Input
+                aria-describedby="room-code-help"
+                placeholder="ABC234"
+                required
                 className="room-code-input"
                 value={roomCode}
                 onChange={(event) => setRoomCode(event.target.value.toUpperCase().replace(/[^2-9A-HJ-NP-Z]/g, "").slice(0, 6))}
@@ -225,6 +228,7 @@ function RoomOnboarding({ store, rulesProfiles, activeRulesProfileId, onSelectRu
                 maxLength={6}
               />
             </Label>
+            <p id="room-code-help" className="room-join-help">{t("Peça ao narrador o código de 6 caracteres. Sua entrada precisa ser aprovada.", "Ask your narrator for the 6-character code. Your request needs approval.")}</p>
             <Label className="field-stack">
               <span>{t("Como quer ser chamado")}</span>
               <Input value={playerName} onChange={(event) => setPlayerName(event.target.value)} maxLength={60} autoComplete="name" />
