@@ -228,6 +228,7 @@ function RoomOnboarding({ store, rulesProfiles, activeRulesProfileId, onSelectRu
                 maxLength={6}
               />
             </Label>
+            <p id="room-code-help" className="room-join-help">{t("Peça ao narrador o código de 6 caracteres. Sua entrada precisa ser aprovada.", "Ask your narrator for the 6-character code. Your request needs approval.")}</p>
             <Label className="field-stack">
               <span>{t("Como quer ser chamado")}</span>
               <Input value={playerName} onChange={(event) => setPlayerName(event.target.value)} maxLength={60} autoComplete="name" />
