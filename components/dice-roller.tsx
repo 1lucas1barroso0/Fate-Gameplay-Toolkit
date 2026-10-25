@@ -57,12 +57,16 @@ export function DiceRoller({
   onRoomRoll,
   tableConfig,
   onOpenSettings,
+  onOpenSheets,
+  onOpenRooms,
 }: {
   character: FateCharacter;
   roomReady?: boolean;
   onRoomRoll?: (modifier: number, label: string) => Promise<LocalRoll>;
   tableConfig: TableConfig;
   onOpenSettings: () => void;
+  onOpenSheets?: () => void;
+  onOpenRooms?: () => void;
 }) {
   useAppLanguage();
   const [manualModifier, setManualModifier] = React.useState(0);
@@ -153,8 +157,12 @@ export function DiceRoller({
         <div>
           <p className="eyebrow">{t("4dF exatos")}</p>
           <h1 id="dice-heading">{t("Rolagens")}</h1>
-          <p>{t("Quatro dados, três faces equiprováveis em cada dado.")}</p>
+          <p>{t("Escolha uma perícia, diga o que vai tentar e role quando a mesa pedir.", "Choose a skill, say what you want to try, and roll when your group calls for it.")}</p>
         </div>
+        <nav className="session-shortcuts" aria-label={t("Voltar ao jogo", "Back to play")}>
+          {onOpenSheets && <Button type="button" variant="ghost" onClick={onOpenSheets}>{t("Voltar à Ficha", "Back to sheet")}</Button>}
+          {onOpenRooms && <Button type="button" variant="ghost" onClick={onOpenRooms}>{t("Abrir Mesas", "Open tables")}</Button>}
+        </nav>
       </header>
 
       <div className="active-profile-strip">
@@ -179,7 +187,7 @@ export function DiceRoller({
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="manual">{t("Bônus manual")}</SelectItem>
-                  {skills.map((item) => <SelectItem key={item.id} value={item.id}>{item.pt} ({(character.skills[item.id] ?? 0) >= 0 ? "+" : ""}{character.skills[item.id] ?? 0})</SelectItem>)}
+                  {skills.map((item) => <SelectItem key={item.id} value={item.id}>{uiLabel(item)} ({(character.skills[item.id] ?? 0) >= 0 ? "+" : ""}{character.skills[item.id] ?? 0})</SelectItem>)}
                 </SelectContent>
               </Select>
             </Label>
@@ -222,6 +230,7 @@ export function DiceRoller({
 
           {tableConfig.officialRules.fullDefense && fullDefense && <p className="applied-bonus"><Shield /> {t("Defesa total já incluída:")} {modifier >= 0 ? "+" : ""}{modifier} + 2 = {effectiveModifier >= 0 ? "+" : ""}{effectiveModifier}</p>}
 
+          {!roomReady && <p className="reader-notice">{t("A rolagem neste dispositivo fica no seu histórico. Para compartilhar com o grupo, abra uma Mesa e aguarde a aprovação do narrador.", "Rolling on this device saves to your history. To share with the group, open a table and wait for the narrator’s approval.")}</p>}
           {!validRoomModifier && <p className="reader-notice">{t("A Mesa aceita bônus final entre −20 e +20. Ajuste o bônus para publicar.")}</p>}
           <details className="roll-comparison">
             <summary>{t("Comparar com uma dificuldade")}</summary>

@@ -102,3 +102,21 @@
 .clean-custom-rules dl { grid-template-columns: minmax(0, 1fr); gap: 0.35rem; }
 .clean-custom-rules dt { min-width: 0; font-weight: 700; }
 .clean-custom-rules dt, .clean-custom-rules dd { overflow-wrap: anywhere; }
+
+/* Short routes into play, with optional first-visit help. */
+.getting-started { margin-bottom: 1rem; border-block: 1px solid var(--line); padding: .8rem 0; }
+.getting-started > summary { cursor: pointer; min-height: 44px; padding: .5rem; font-weight: 700; }
+.getting-started ol { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.2rem; margin: .6rem 0; padding: 0; list-style: none; }
+.getting-started li { min-width: 0; padding: .6rem; }
+.getting-started li p, .getting-started-note { margin: .5rem 0; font-size: .8rem; line-height: 1.6; color: var(--muted-foreground); overflow-wrap: anywhere; }
+.getting-started-note { padding: .6rem; }
+.session-shortcuts { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin-bottom: 1rem; }
+.session-shortcuts [data-slot="button"] { min-height: 44px; max-width: 100%; }
+.new-sheet-form { display: grid; gap: .8rem; }
+.room-join-help { grid-column: 1 / -1; margin: 0; font-size: .78rem; line-height: 1.6; color: var(--muted-foreground); }
+@media (max-width: 700px) {
+  .getting-started ol { grid-template-columns: minmax(0, 1fr); gap: .5rem; }
+  .session-shortcuts > button { flex: 1 1 10rem; }
+}
+
+.room-form-join > .field-stack { grid-column: 1 / -1; }
